@@ -99,3 +99,14 @@ memory-bank
 
 # native_parser/docx CLI output (audit JSONL + image dir)
 /parse_output/
+
+# Local scratch files and generated evaluation runs
+/tmp/
+/outputs/*
+!/outputs/printer_rag_baseline/
+/outputs/printer_rag_baseline/*
+!/outputs/printer_rag_baseline/01_测试题与操作说明.md
+!/outputs/printer_rag_baseline/02_参考依据与评分要点.md
+!/outputs/printer_rag_baseline/03_题库.jsonl
+!/outputs/printer_rag_baseline/04_单次结果记录模板.json
+!/outputs/printer_rag_baseline/05_自动批量测试说明.md

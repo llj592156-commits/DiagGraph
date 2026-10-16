@@ -1,3 +1,5 @@
+> **DiagGraph（维知助手）** is an equipment troubleshooting and after-sales knowledge project built on LightRAG. See the [DiagGraph project guide](README-DiagGraph.md) for this fork's implementation status, evaluation tools, and development plan. The original LightRAG documentation follows below.
+
 <div align="center">
 
 <div style="margin: 20px 0;">
