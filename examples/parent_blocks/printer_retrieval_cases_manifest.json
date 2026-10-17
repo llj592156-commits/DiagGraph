@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "source": "outputs/printer_rag_baseline/03_题库.jsonl",
+  "sha256": "9d1eef0fbd15bc8b8a23c88f00efb3801070e1816b21f35c82926e55f174bc8b",
+  "questions": 36,
+  "retrieval_questions": 30,
+  "boundary_questions": 6,
+  "usage": "Evaluation only. Never insert reference answers, evidence quotes, or scoring notes into a knowledge index."
+}

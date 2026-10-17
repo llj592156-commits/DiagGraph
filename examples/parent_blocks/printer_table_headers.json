@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "tables": {
+    "tb-d77c5389c6c5c32d2dc4f1e23abfe5d5-0041": {
+      "header_rows": [["功能", "", "", "支持", "备注"]],
+      "evidence": {
+        "document_name": "L4263-L4266-L4267-L4268-L4269-UG.pdf",
+        "pdf_page": 202,
+        "quote": "网络功能和 IPv4/IPv6；首行：功能、支持、备注",
+        "verification": "Original PDF rendered and reviewed; header values must match the source JSON row prefix."
+      }
+    }
+  }
+}

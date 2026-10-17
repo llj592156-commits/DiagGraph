@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "document_names": [
+    "L3251_L3253_L3255_L3256_L3258_UG.pdf",
+    "L3266_L3267_L3268_L3269_L5298_UG.pdf",
+    "L4263-L4266-L4267-L4268-L4269-UG.pdf"
+  ],
+  "rules": [
+    {
+      "id": "windows-print-operations",
+      "section_path": ["打印", "打印文档", "从计算机进行打印 - Windows"],
+      "heading_styles": [{"bbox_height_pt": 13.99, "depth": 1}]
+    },
+    {
+      "id": "print-failure-platform-and-symptom",
+      "section_path": ["故障排除", "本产品未能正常工作", "无法打印"],
+      "heading_styles": [
+        {"bbox_height_pt": 13.99, "depth": 1},
+        {"bbox_height_pt": 13.2, "depth": 2}
+      ]
+    },
+    {
+      "id": "fax-failure-platform-and-symptom",
+      "section_path": ["故障排除", "本产品未能正常工作", "无法发送或接收传真"],
+      "heading_styles": [
+        {"bbox_height_pt": 13.99, "depth": 1},
+        {"bbox_height_pt": 13.2, "depth": 2}
+      ]
+    }
+  ]
+}

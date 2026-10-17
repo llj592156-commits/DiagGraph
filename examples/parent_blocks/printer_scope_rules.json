@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "documents": {
+    "L3266_L3267_L3268_L3269_L5298_UG.pdf": {
+      "rules": [
+        {
+          "id": "B-fax-L5298",
+          "feature": "fax",
+          "path_patterns": ["^传真$"],
+          "applicable_models": ["L5298"],
+          "evidence": {
+            "page": 6,
+            "quote": "以下功能仅适用于 L5298。",
+            "feature_quote": "传真"
+          }
+        },
+        {
+          "id": "B-adf-L5298",
+          "feature": "adf",
+          "path_patterns": ["ADF"],
+          "applicable_models": ["L5298"],
+          "evidence": {
+            "page": 6,
+            "quote": "以下功能仅适用于 L5298。",
+            "feature_quote": "ADF（自动文稿送纸器）"
+          }
+        },
+        {
+          "id": "B-ethernet-L5298",
+          "feature": "ethernet",
+          "path_patterns": ["以太网"],
+          "applicable_models": ["L5298"],
+          "evidence": {
+            "page": 6,
+            "quote": "以下功能仅适用于 L5298。",
+            "feature_quote": "以太网连接"
+          }
+        }
+      ]
+    }
+  }
+}
