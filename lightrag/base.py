@@ -115,8 +115,10 @@ class QueryParam:
     """Number of top items to retrieve. Represents entities in 'local' mode and relationships in 'global' mode."""
 
     chunk_top_k: int = get_env_value("CHUNK_TOP_K", DEFAULT_CHUNK_TOP_K, int)
-    """Number of text chunks to retrieve initially from vector search and keep after reranking.
-    If None, defaults to top_k value.
+    """Final text-evidence limit; if None, fall back to top_k.
+
+    Recall uses at least addon_params['rerank_candidate_k'] when configured;
+    otherwise this also limits the initial vector search, as in legacy queries.
     """
 
     max_entity_tokens: int = get_env_value(

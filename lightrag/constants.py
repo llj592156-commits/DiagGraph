@@ -456,7 +456,8 @@ PROCESS_OPTION_IMAGES = "i"  # Enable VLM analysis for drawings/images
 PROCESS_OPTION_TABLES = "t"  # Enable VLM analysis for tables
 PROCESS_OPTION_EQUATIONS = "e"  # Enable VLM analysis for equations
 PROCESS_OPTION_SKIP_KG = "!"  # Skip entity/relation extraction (no KG build)
-ProcessChunkingOption: TypeAlias = Literal["F", "R", "V", "P", "C"]
+ProcessChunkingOption: TypeAlias = Literal["F", "R", "V", "P", "C", "H"]
+PROCESS_OPTION_CHUNK_PARENT_CHILD: ProcessChunkingOption = "H"
 PROCESS_OPTION_CHUNK_FIXED: ProcessChunkingOption = (
     "F"  # Fixed-length / separator chunking (default)
 )
@@ -475,6 +476,7 @@ PROCESS_OPTION_CHUNK_CUSTOM: ProcessChunkingOption = (
 
 PROCESS_OPTION_CHUNK_CHARS: frozenset[ProcessChunkingOption] = frozenset(
     {
+        PROCESS_OPTION_CHUNK_PARENT_CHILD,
         PROCESS_OPTION_CHUNK_FIXED,
         PROCESS_OPTION_CHUNK_RECURSIVE,
         PROCESS_OPTION_CHUNK_VECTOR,
@@ -484,6 +486,7 @@ PROCESS_OPTION_CHUNK_CHARS: frozenset[ProcessChunkingOption] = frozenset(
 )
 SUPPORTED_PROCESS_OPTIONS = frozenset(
     {
+        PROCESS_OPTION_CHUNK_PARENT_CHILD,
         PROCESS_OPTION_IMAGES,
         PROCESS_OPTION_TABLES,
         PROCESS_OPTION_EQUATIONS,

@@ -9,6 +9,7 @@ import pytest
 
 from lightrag.evaluation import printer_graph_smoke as smoke
 from lightrag.evaluation.printer_graph_samples import query_slots
+from lightrag.extraction.errors import ExtractionRequestError
 
 pytestmark = pytest.mark.offline
 
@@ -128,7 +129,10 @@ def test_slots_are_from_question_not_reference_labels():
     assert query_slots("出现 E-12")["domain"] is None
 
 
-def test_request_uses_extract_configuration_without_other_models(monkeypatch):
+@pytest.mark.parametrize("response_format", [None, {"type": "json_object"}])
+def test_request_uses_extract_configuration_without_other_models(
+    monkeypatch, response_format
+):
     captured = []
 
     def open_request(req, timeout):
@@ -138,13 +142,65 @@ def test_request_uses_extract_configuration_without_other_models(monkeypatch):
     monkeypatch.setattr(
         smoke.request, "build_opener", lambda *args: SimpleNamespace(open=open_request)
     )
-    result = smoke.call_model(settings(), smoke.messages(sample()))
+    result = smoke.call_model(
+        settings(), smoke.messages(sample()), response_format=response_format
+    )
     assert result["choices"]
     assert captured[0]["model"] == "extract-test"
     assert captured[0]["enable_thinking"] is False
     assert captured[0]["max_tokens"] == 4096
     assert captured[0]["stream"] is False
+    if response_format is None:
+        assert "response_format" not in captured[0]
+    else:
+        assert captured[0]["response_format"] == response_format
     assert "secret" not in json.dumps(captured)
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 408, 429, 500, 502, 503, 504])
+def test_http_failure_classifies_transient_status_without_leaking_body(
+    monkeypatch, status
+):
+    def fail(*args, **kwargs):
+        raise smoke.error.HTTPError(
+            "https://example.test", status, "private body", {}, None
+        )
+
+    monkeypatch.setattr(
+        smoke.request, "build_opener", lambda *args: SimpleNamespace(open=fail)
+    )
+    with pytest.raises(ExtractionRequestError) as caught:
+        smoke.call_model(settings(), [])
+    assert caught.value.status == status
+    assert caught.value.retryable is (status in {408, 429, 500, 502, 503, 504})
+    assert str(caught.value) == f"Extraction HTTP {status}"
+
+
+@pytest.mark.parametrize(
+    "kind", ["timeout", "url", "reset", "incomplete", "certificate"]
+)
+def test_connection_failure_classification(monkeypatch, kind):
+    from http.client import IncompleteRead
+    from ssl import SSLCertVerificationError
+
+    failure = {
+        "timeout": TimeoutError(),
+        "url": smoke.error.URLError("private reason"),
+        "reset": ConnectionResetError(),
+        "incomplete": IncompleteRead(b"private partial body"),
+        "certificate": smoke.error.URLError(SSLCertVerificationError()),
+    }[kind]
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(
+        smoke.request, "build_opener", lambda *args: SimpleNamespace(open=fail)
+    )
+    with pytest.raises(ExtractionRequestError) as caught:
+        smoke.call_model(settings(), [])
+    assert caught.value.retryable is (kind != "certificate")
+    assert "private" not in str(caught.value)
 
 
 def test_preflight_and_resume_do_not_repeat_successful_requests(monkeypatch, tmp_path):

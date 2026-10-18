@@ -1677,6 +1677,22 @@ async def _rebuild_from_extraction_result(
         else "unknown_source"
     )
 
+    if chunk_data and chunk_data.get("extraction_config", {}).get("profile") == "printer_v2":
+        from lightrag.extraction.runtime import build_records, chunk_context
+
+        visible = sanitize_text_for_encoding(
+            strip_internal_multimodal_markup_for_extraction(chunk_data["content"]),
+            strip=False,
+        )
+        context = chunk_context(
+            chunk_data, chunk_id, chunk_data["extraction_config"],
+            format_heading_context(chunk_data),
+        )
+        nodes, edges, _ = build_records(
+            visible, context, extraction_result, timestamp, on_schema_error="skip"
+        )
+        return nodes, edges
+
     # Auto-detect format: try JSON first if the result looks like JSON
     json_parse_reported_failure = False
     if _looks_like_json_extraction_result(extraction_result):
@@ -4174,6 +4190,136 @@ async def extract_entities(
                     f"are reported as one summary at the end of extraction"
                 )
 
+        if chunk_dp.get("extraction_config", {}).get("profile") == "printer_v2":
+            from lightrag.extraction import printer
+            from lightrag.extraction.errors import ExtractionRetriesExhausted
+            from lightrag.extraction.runtime import (
+                build_records,
+                chunk_context,
+                skipped_evidence,
+            )
+
+            if kg_extraction_validator is not None:
+                raise ValueError(
+                    "printer_v2 uses its business validator; an additional extraction validator is not supported"
+                )
+            if text_chunks_storage is None:
+                raise ValueError(
+                    "printer_v2 requires text_chunks storage for source evidence"
+                )
+            visible = sanitize_text_for_encoding(content, strip=False)
+            business_context = chunk_context(
+                chunk_dp,
+                chunk_key,
+                chunk_dp["extraction_config"],
+                format_heading_context(chunk_dp),
+            )
+            messages = printer.messages(
+                {
+                    "document_name": business_context["document_name"],
+                    "heading_path": business_context["heading_path"],
+                    "domain": business_context["domain"],
+                    "input_text": visible,
+                }
+            )
+            if extract_tokenizer and max_extract_input_tokens > 0:
+                tokens = await acount_tokens(
+                    extract_tokenizer, messages[0]["content"] + messages[1]["content"]
+                )
+                if tokens > max_extract_input_tokens:
+                    raise ValueError(
+                        f"Business extraction input exceeds limit: {tokens} > {max_extract_input_tokens}"
+                    )
+            request_failure = None
+            try:
+                result, timestamp = await use_llm_func_with_cache(
+                    messages[1]["content"],
+                    use_llm_func,
+                    system_prompt=messages[0]["content"],
+                    llm_response_cache=llm_response_cache,
+                    cache_type="extract",
+                    chunk_id=chunk_key,
+                    text_chunks_storage=text_chunks_storage,
+                    on_cache_skipped=_report_cache_skip,
+                    response_format={"type": "json_object"},
+                    llm_cache_identity=get_llm_cache_identity(global_config, "extract"),
+                )
+                _report_truncation(result, "initial")
+            except ExtractionRetriesExhausted as exc:
+                # Only an explicitly classified, exhausted transient request is
+                # chunk-local. Storage, configuration and unknown errors raise.
+                request_failure = {**exc.details, "error": str(exc)}
+                result, timestamp = None, int(time.time())
+            # Re-read after cache publication to retain its new attribution refs.
+            latest = await text_chunks_storage.get_by_id(chunk_key)
+            if latest is None:
+                raise ValueError(
+                    "Business source chunk disappeared before evidence persistence"
+                )
+            latest = {
+                **latest,
+                "business_extraction_attempt": {
+                    "context": business_context,
+                    "raw_response": None if request_failure else str(result),
+                    "timestamp": timestamp,
+                    "truncated": is_truncated_response(result),
+                    **({"request_failure": request_failure} if request_failure else {}),
+                },
+            }
+            # Preserve malformed/truncated output too, including responses that
+            # the normal cache intentionally declines to store.
+            await text_chunks_storage.upsert({chunk_key: latest})
+            if request_failure:
+                nodes, edges = {}, {}
+                evidence = skipped_evidence(
+                    business_context,
+                    {
+                        "sample_error": request_failure["error"],
+                        "request_failure": request_failure,
+                        "accepted": {"entities": [], "relationships": []},
+                        "rejected": [],
+                    },
+                )
+            else:
+                nodes, edges, evidence = build_records(
+                    visible, business_context, result, timestamp,
+                    on_schema_error="skip", response_truncated=is_truncated_response(result),
+                )
+            await text_chunks_storage.upsert(
+                {chunk_key: {**latest, "business_extraction": evidence}}
+            )
+            rejected = len(evidence["review"]["rejected"])
+            skipped = evidence["review"].get("skipped", False)
+            if skipped:
+                message = (
+                    f"Business extraction skipped chunk {chunk_key}: {evidence['review']['sample_error']}; "
+                    "original source and extraction attempt retained, continuing other chunks"
+                )
+                logger.warning(message)
+                status_logger.log(message)
+            if rejected:
+                message = f"Business extraction quarantined {rejected} records for {chunk_key}; inspect business_extraction.review"
+                logger.warning(message)
+                status_logger.log(message)
+            processed_chunks += 1
+            progress_message = (
+                f"Business chunk {processed_chunks}/{total_chunks}: {len(nodes)} entities, {len(edges)} relationships; semantic review required"
+            )
+            logger.info(
+                progress_message,
+                extra={
+                    "printer_chunk_progress": {
+                        "doc_id": business_context["doc_id"],
+                        "chunk_id": chunk_key,
+                        "completed": processed_chunks,
+                        "total": total_chunks,
+                        "skipped": skipped,
+                    }
+                },
+            )
+            status_logger.log(progress_message)
+            return nodes, edges
+
         if use_json_extraction:
             # JSON mode: use JSON prompts and pass entity_extraction flag to LLM provider.
             # The local must be bound explicitly: the text-mode branch below
@@ -4702,6 +4848,7 @@ async def kg_query(
     system_prompt: str | None = None,
     chunks_vdb: BaseVectorStorage = None,
     progress_callback: ProgressCallback | None = None,
+    full_docs_db: BaseKVStorage | None = None,
 ) -> QueryResult | None:
     """
     Execute knowledge graph query and return unified QueryResult object.
@@ -4781,11 +4928,13 @@ async def kg_query(
         # The token budget must be computed against the template this function
         # will actually render below, not the default one.
         system_prompt=system_prompt,
+        full_docs_db=full_docs_db,
     )
 
     if context_result is None:
         logger.info("[kg_query] No query context could be built; returning no-result.")
         return None
+    pc_metadata = context_result.raw_data.get("metadata", {}).get("parent_child")
 
     # Return different content based on query parameters
     if query_param.only_need_context and not query_param.only_need_prompt:
@@ -4886,6 +5035,7 @@ async def kg_query(
         "\n<kg_chunk_selection>\n",
         related_chunk_number,
         kg_chunk_pick_method,
+        *(("parent_child_context", context_result.context) if pc_metadata else ()),
         *(("\n<system_prompt>\n", system_prompt) if system_prompt else ()),
         "\n<llm_identity>\n",
         serialize_llm_cache_identity(llm_cache_identity),
@@ -5247,7 +5397,12 @@ async def _get_vector_context(
     # let a transient vector-store error surface as a confident "no results"
     # answer instead of a retrieval failure (and, in mix mode, silently
     # dropped the vector-search branch while KG results kept flowing).
-    search_top_k = query_param.chunk_top_k or query_param.top_k
+    from lightrag.document_structure.query import candidate_limit
+
+    vector_config = getattr(chunks_vdb, "global_config", {})
+    search_top_k = candidate_limit(
+        query_param, vector_config if isinstance(vector_config, dict) else {}
+    )
     cosine_threshold = chunks_vdb.cosine_better_than_threshold
 
     results = await chunks_vdb.query(
@@ -5861,6 +6016,11 @@ async def _merge_all_chunks(
         f"Round-robin merged chunks: {origin_len} -> {len(merged_chunks)} (deduplicated {origin_len - len(merged_chunks)})"
     )
 
+    if text_chunks_db and text_chunks_db.global_config.get("addon_params", {}).get("rerank_candidate_k", 0):
+        from lightrag.document_structure.query import candidate_limit
+
+        merged_chunks = merged_chunks[:candidate_limit(query_param, text_chunks_db.global_config)]
+
     # Backfill heading path before token truncation so it counts toward the budget
     if text_chunks_db and text_chunks_db.global_config.get(
         "enable_content_headings", False
@@ -5877,11 +6037,13 @@ async def _build_context_str(
     query: str,
     query_param: QueryParam,
     global_config: dict[str, str],
-    chunk_tracking: dict = None,
-    entity_id_to_original: dict = None,
-    relation_id_to_original: dict = None,
+    chunk_tracking: dict | None = None,
+    entity_id_to_original: dict | None = None,
+    relation_id_to_original: dict | None = None,
     progress_callback: ProgressCallback | None = None,
     system_prompt: str | None = None,
+    text_chunks_db: BaseKVStorage | None = None,
+    full_docs_db: BaseKVStorage | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
     Build the final LLM context string with token processing.
@@ -5901,6 +6063,26 @@ async def _build_context_str(
         empty_raw_data["status"] = "failure"
         empty_raw_data["message"] = "Missing tokenizer, cannot build LLM context."
         return "", empty_raw_data
+
+    from lightrag.document_structure.query import (
+        expand_parent_evidence,
+        fit_parent_evidence,
+        minimum_evidence_tokens,
+        rank_evidence_children,
+        retained_parent_metadata,
+    )
+
+    evidence_flow = bool(global_config.get("addon_params", {}).get("rerank_candidate_k", 0)) or any(
+        "-pc-child-" in str(c.get("chunk_id") or c.get("id")) for c in merged_chunks
+    )
+    pc_metadata, retrieval_info = None, None
+    if evidence_flow:
+        merged_chunks, retrieval_info = await rank_evidence_children(
+            query, merged_chunks, query_param, global_config, text_chunks_db, progress_callback
+        )
+        merged_chunks, pc_metadata = await expand_parent_evidence(
+            merged_chunks, text_chunks_db, full_docs_db, include_fallback=True
+        )
 
     # Get token limits
     max_total_tokens = getattr(
@@ -5971,6 +6153,25 @@ async def _build_context_str(
     # Calculate available tokens for text chunks
     query_tokens = await acount_tokens(tokenizer, query)
     buffer_tokens = 200  # reserved for reference list and safety buffer
+    if pc_metadata and merged_chunks:
+        reserve = await run_in_tokenizer_executor(minimum_evidence_tokens, merged_chunks, tokenizer)
+        # Shrink graph summaries, never source text, to leave room for a complete
+        # evidence group. If even that group exceeds the total budget, the final
+        # selector reports the omission instead of clipping prerequisites.
+        entities_context, relations_context = list(entities_context), list(relations_context)
+        graph_budget = max_total_tokens - sys_prompt_tokens - query_tokens - buffer_tokens - reserve
+        while kg_context_tokens > graph_budget and (entities_context or relations_context):
+            if relations_context:
+                relations_context.pop()
+            else:
+                entities_context.pop()
+            entities_str = "\n".join(json.dumps(e, ensure_ascii=False) for e in entities_context)
+            relations_str = "\n".join(json.dumps(r, ensure_ascii=False) for r in relations_context)
+            pre_kg_context = kg_context_template.format(
+                entities_str=entities_str, relations_str=relations_str,
+                text_chunks_str="", reference_list_str="",
+            )
+            kg_context_tokens = await acount_tokens(tokenizer, pre_kg_context)
     available_chunk_tokens = max_total_tokens - (
         sys_prompt_tokens + kg_context_tokens + query_tokens + buffer_tokens
     )
@@ -5980,15 +6181,23 @@ async def _build_context_str(
     )
 
     # Apply token truncation to chunks using the dynamic limit
-    truncated_chunks = await process_chunks_unified(
-        query=query,
-        unique_chunks=merged_chunks,
-        query_param=query_param,
-        global_config=global_config,
-        source_type=query_param.mode,
-        chunk_token_limit=available_chunk_tokens,  # Pass dynamic limit
-        progress_callback=progress_callback,
-    )
+    if evidence_flow:
+        truncated_chunks, budget_info = await run_in_tokenizer_executor(
+            fit_parent_evidence, merged_chunks, available_chunk_tokens, tokenizer
+        )
+        retrieval_info.update(budget_info)
+        retrieval_info.update({
+            "graph_entities_in_context": len(entities_context),
+            "graph_relations_in_context": len(relations_context),
+        })
+        pc_metadata = retained_parent_metadata(pc_metadata, truncated_chunks)
+        logger.info("Evidence selection: %s", budget_info)
+    else:
+        truncated_chunks = await process_chunks_unified(
+            query=query, unique_chunks=merged_chunks, query_param=query_param,
+            global_config=global_config, source_type=query_param.mode,
+            chunk_token_limit=available_chunk_tokens, progress_callback=progress_callback,
+        )
 
     # Generate reference list from truncated chunks using the new common function
     reference_list, truncated_chunks = generate_reference_list_from_chunks(
@@ -6065,6 +6274,10 @@ async def _build_context_str(
         relation_id_to_original,
     )
     final_data_payload = final_data.get("data", {})
+    if retrieval_info is not None:
+        final_data.setdefault("metadata", {})["retrieval"] = retrieval_info
+    if pc_metadata:
+        final_data.setdefault("metadata", {})["parent_child"] = pc_metadata
     logger.debug(
         f"[_build_context_str] Final data after conversion: {len(final_data_payload.get('entities', []))} entities, {len(final_data_payload.get('relationships', []))} relationships, {len(final_data_payload.get('chunks', []))} chunks"
     )
@@ -6084,6 +6297,7 @@ async def _build_query_context(
     chunks_vdb: BaseVectorStorage = None,
     progress_callback: ProgressCallback | None = None,
     system_prompt: str | None = None,
+    full_docs_db: BaseKVStorage | None = None,
 ) -> QueryContextResult | None:
     """
     Main query context building function using the new 4-stage architecture:
@@ -6159,6 +6373,8 @@ async def _build_query_context(
         relation_id_to_original=truncation_result["relation_id_to_original"],
         progress_callback=progress_callback,
         system_prompt=system_prompt,
+        text_chunks_db=text_chunks_db,
+        full_docs_db=full_docs_db,
     )
 
     # Convert keywords strings to lists and add complete metadata to raw_data
@@ -6858,6 +7074,7 @@ async def naive_query(
     system_prompt: str | None = None,
     text_chunks_db: BaseKVStorage | None = None,
     progress_callback: ProgressCallback | None = None,
+    full_docs_db: BaseKVStorage | None = None,
 ) -> QueryResult | None:
     """
     Execute naive query and return unified QueryResult object.
@@ -6897,6 +7114,25 @@ async def naive_query(
     if progress_callback:
         await progress_callback(QueryProgress.RETRIEVING_CHUNKS)
     chunks = await _get_vector_context(query, chunks_vdb, query_param, None)
+
+    from lightrag.document_structure.query import (
+        expand_parent_evidence,
+        fit_parent_evidence,
+        rank_evidence_children,
+        retained_parent_metadata,
+    )
+
+    evidence_flow = bool(global_config.get("addon_params", {}).get("rerank_candidate_k", 0)) or any(
+        "-pc-child-" in str(c.get("chunk_id") or c.get("id")) for c in (chunks or [])
+    )
+    pc_metadata, retrieval_info = None, None
+    if evidence_flow:
+        chunks, retrieval_info = await rank_evidence_children(
+            query, chunks or [], query_param, global_config, text_chunks_db, progress_callback
+        )
+        chunks, pc_metadata = await expand_parent_evidence(
+            chunks, text_chunks_db, full_docs_db, include_fallback=True
+        )
 
     if chunks is None or len(chunks) == 0:
         logger.info(
@@ -6955,15 +7191,19 @@ async def naive_query(
     )
 
     # Process chunks using unified processing with dynamic token limit
-    processed_chunks = await process_chunks_unified(
-        query=query,
-        unique_chunks=chunks,
-        query_param=query_param,
-        global_config=global_config,
-        source_type="vector",
-        chunk_token_limit=available_chunk_tokens,  # Pass dynamic limit
-        progress_callback=progress_callback,
-    )
+    if evidence_flow:
+        processed_chunks, budget_info = await run_in_tokenizer_executor(
+            fit_parent_evidence, chunks, available_chunk_tokens, tokenizer
+        )
+        retrieval_info.update(budget_info)
+        pc_metadata = retained_parent_metadata(pc_metadata, processed_chunks)
+        logger.info("Evidence selection: %s", budget_info)
+    else:
+        processed_chunks = await process_chunks_unified(
+            query=query, unique_chunks=chunks, query_param=query_param,
+            global_config=global_config, source_type="vector",
+            chunk_token_limit=available_chunk_tokens, progress_callback=progress_callback,
+        )
 
     # Generate reference list from processed chunks using the new common function
     reference_list, processed_chunks_with_ref_ids = generate_reference_list_from_chunks(
@@ -6984,6 +7224,10 @@ async def naive_query(
     # Add complete metadata for naive mode
     if "metadata" not in raw_data:
         raw_data["metadata"] = {}
+    if pc_metadata:
+        raw_data["metadata"]["parent_child"] = pc_metadata
+    if retrieval_info is not None:
+        raw_data["metadata"]["retrieval"] = retrieval_info
     raw_data["metadata"]["keywords"] = {
         "high_level": [],  # naive mode has no keyword extraction
         "low_level": [],  # naive mode has no keyword extraction
@@ -7049,6 +7293,7 @@ async def naive_query(
         effective_user_prompt.text,
         query_param.enable_rerank,
         global_config.get("enable_content_headings", False),
+        *(("parent_child_context", context_content) if pc_metadata else ()),
         *(("\n<system_prompt>\n", system_prompt) if system_prompt else ()),
         "\n<llm_identity>\n",
         serialize_llm_cache_identity(llm_cache_identity),

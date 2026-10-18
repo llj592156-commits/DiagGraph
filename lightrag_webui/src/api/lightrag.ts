@@ -8,6 +8,7 @@ import {
   searchLabelsDefaultLimit
 } from '@/lib/constants'
 import type { SupportedFileTypes } from '@/lib/fileTypes'
+import { fileNameForChunking, type UploadChunkingStrategy } from '@/lib/uploadChunking'
 import { errorMessage } from '@/lib/utils'
 import { decodeBase64Url } from '@/lib/base64url'
 import { useSettingsStore } from '@/stores/settings'
@@ -1002,10 +1003,13 @@ export const insertTexts = async (texts: string[]): Promise<DocActionResponse> =
 
 export const uploadDocument = async (
   file: File,
-  onUploadProgress?: (percentCompleted: number) => void
+  onUploadProgress?: (percentCompleted: number) => void,
+  chunkingStrategy: UploadChunkingStrategy = 'auto'
 ): Promise<DocActionResponse> => {
   const formData = new FormData()
-  formData.append('file', file)
+  const name = fileNameForChunking(file.name, chunkingStrategy)
+  if (name === file.name) formData.append('file', file)
+  else formData.append('file', file, name)
 
   const response = await axiosInstance.post('/documents/upload', formData, {
     headers: {

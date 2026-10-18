@@ -17,7 +17,9 @@ import time
 import unicodedata
 from collections import Counter
 from contextlib import contextmanager
+from http.client import HTTPException
 from pathlib import Path
+from ssl import SSLCertVerificationError, SSLEOFError
 from urllib import error, parse, request
 
 import numpy as np
@@ -27,8 +29,11 @@ from lightrag.document_structure.children import load_local_tokenizer
 from lightrag.document_structure.parents import MODEL_RE, file_hash
 from lightrag.document_structure.retrieval import ParentChildIndex
 from lightrag.document_structure.table_notes import evidence_text, with_table_notes
+from lightrag.utils import logger
 
 VERSION = "printer-dense-retrieval-v3"
+EMBEDDING_REQUEST_TIMEOUT = 60
+EMBEDDING_RETRY_DELAYS = (1, 2, 4)
 
 
 def provider_identity(config: dict) -> dict:
@@ -235,8 +240,10 @@ def make_plan(
 
 
 def embed_batch(
-    config: dict, texts: list[str], timeout: int = 60
+    config: dict, texts: list[str], timeout: int = EMBEDDING_REQUEST_TIMEOUT
 ) -> tuple[np.ndarray, dict]:
+    """Retry transient HTTP/transport failures; return only complete validated vectors."""
+
     class NoRedirect(request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
@@ -255,7 +262,7 @@ def embed_batch(
         method="POST",
     )
     opener = request.build_opener(NoRedirect())
-    for attempt in range(4):
+    for attempt in range(len(EMBEDDING_RETRY_DELAYS) + 1):
         try:
             with opener.open(req, timeout=timeout) as response:
                 payload = json.load(response)
@@ -263,11 +270,43 @@ def embed_batch(
         except error.HTTPError as exc:
             code = exc.code
             exc.close()
-            if code not in {429, 500, 502, 503, 504} or attempt == 3:
+            if (code not in {408, 429} and not 500 <= code <= 599) or attempt == len(
+                EMBEDDING_RETRY_DELAYS
+            ):
                 raise RuntimeError(
                     f"Embedding API HTTP {code}; batch not cached"
                 ) from None
-            time.sleep(min(2**attempt, 8))
+            failure = f"HTTP {code}"
+        except (
+            error.URLError,
+            TimeoutError,
+            ConnectionError,
+            HTTPException,
+            SSLEOFError,
+            SSLCertVerificationError,
+        ) as exc:
+            certificate_failure = isinstance(
+                getattr(exc, "reason", exc), SSLCertVerificationError
+            )
+            if certificate_failure:
+                raise RuntimeError(
+                    "Embedding API TLS certificate verification failure; batch not cached"
+                ) from None
+            if attempt == len(EMBEDDING_RETRY_DELAYS):
+                raise RuntimeError(
+                    f"Embedding API connection/incomplete response failure after {attempt + 1} attempts; batch not cached"
+                ) from None
+            failure = "connection/incomplete response failure"
+        delay = EMBEDDING_RETRY_DELAYS[attempt]
+        logger.warning(
+            "Embedding API %s on attempt %d/%d; retrying the same %d inputs in %ds",
+            failure,
+            attempt + 1,
+            len(EMBEDDING_RETRY_DELAYS) + 1,
+            len(texts),
+            delay,
+        )
+        time.sleep(delay)
     items = sorted(payload["data"], key=lambda row: row["index"])
     if [row["index"] for row in items] != list(range(len(texts))):
         raise ValueError("Embedding API returned missing/duplicate indices")

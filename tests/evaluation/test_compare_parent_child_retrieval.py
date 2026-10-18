@@ -99,6 +99,94 @@ def test_invalid_cache_fails_instead_of_silently_reembedding(tmp_path):
         compare.cached_embeddings([], config(), tmp_path, 2)
 
 
+@pytest.mark.parametrize(
+    "kind",
+    ["incomplete_read", "ssl_eof", "wrapped_ssl_eof", "timeout", "reset", "http_503"],
+)
+def test_embedding_transport_retry_repeats_exact_batch_and_returns_only_complete_vectors(
+    monkeypatch, kind
+):
+    from http.client import IncompleteRead
+    from ssl import SSLEOFError
+
+    failures = {
+        "incomplete_read": IncompleteRead(b"partial private body", 100),
+        "ssl_eof": SSLEOFError("private reason"),
+        "wrapped_ssl_eof": compare.error.URLError(SSLEOFError("private reason")),
+        "timeout": TimeoutError(),
+        "reset": ConnectionResetError(),
+        "http_503": compare.error.HTTPError(
+            "https://example.test", 503, "private", {}, None
+        ),
+    }
+    calls, sleeps = [], []
+    payload = {
+        "data": [{"index": 1, "embedding": [0, 1]}, {"index": 0, "embedding": [1, 0]}]
+    }
+
+    class BrokenResponse(io.StringIO):
+        def read(self, *args):
+            raise failures[kind]
+
+    def open_request(req, timeout):
+        calls.append((req.data, timeout))
+        if len(calls) == 1:
+            return BrokenResponse("")
+        return io.StringIO(json.dumps(payload))
+
+    monkeypatch.setattr(
+        compare.request,
+        "build_opener",
+        lambda *args: SimpleNamespace(open=open_request),
+    )
+    monkeypatch.setattr(compare.time, "sleep", sleeps.append)
+    matrix, _ = compare.embed_batch(config(), ["one", "two"])
+    assert matrix.tolist() == [[1, 0], [0, 1]]
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert sleeps == [1]
+
+
+@pytest.mark.parametrize(
+    "kind", ["transient", "certificate", "wrapped_certificate", "auth", "bad_request"]
+)
+def test_embedding_exhaustion_or_permanent_failure_never_returns_placeholder_vectors(
+    monkeypatch, kind
+):
+    from http.client import IncompleteRead
+    from ssl import SSLCertVerificationError
+
+    failure = {
+        "transient": IncompleteRead(b"partial private body", 100),
+        "certificate": SSLCertVerificationError("private"),
+        "wrapped_certificate": compare.error.URLError(
+            SSLCertVerificationError("private")
+        ),
+        "auth": compare.error.HTTPError(
+            "https://example.test", 401, "private", {}, None
+        ),
+        "bad_request": compare.error.HTTPError(
+            "https://example.test", 400, "private", {}, None
+        ),
+    }[kind]
+    calls, sleeps = [], []
+
+    def open_request(*args, **kwargs):
+        calls.append(1)
+        raise failure
+
+    monkeypatch.setattr(
+        compare.request,
+        "build_opener",
+        lambda *args: SimpleNamespace(open=open_request),
+    )
+    monkeypatch.setattr(compare.time, "sleep", sleeps.append)
+    with pytest.raises(RuntimeError) as caught:
+        compare.embed_batch(config(), ["input"])
+    assert len(calls) == (4 if kind == "transient" else 1)
+    assert sleeps == ([1, 2, 4] if kind == "transient" else [])
+    assert "private" not in str(caught.value)
+
+
 def test_source_anchor_score_requires_both_document_and_quote():
     q = {"evidence": [{"document": "A", "quote": "按 OK 按钮。"}]}
     assert (

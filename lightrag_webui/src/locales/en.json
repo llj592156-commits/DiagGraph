@@ -95,6 +95,17 @@
       "tooltip": "Upload documents",
       "title": "Upload Documents",
       "description": "Drag and drop your documents here or click to browse.",
+      "chunking": {
+        "label": "Chunking strategy",
+        "auto": "Use existing configuration",
+        "F": "Fixed token size (F)",
+        "R": "Recursive character (R)",
+        "V": "Semantic vector (V)",
+        "P": "Paragraph semantic (P)",
+        "C": "Custom (C)",
+        "H": "Parent-child · device manuals (H)",
+        "parentChildHelp": "PDF only. Uses Docling to save parent-child chunks and sources in the current knowledge base. Retrieves parent evidence after child hits; keeps the existing graph extraction workflow."
+      },
       "single": {
         "uploading": "Uploading {{name}}: {{percent}}%",
         "success": "Upload Success:\n{{name}} uploaded successfully",

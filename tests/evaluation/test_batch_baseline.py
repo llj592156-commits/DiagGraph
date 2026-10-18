@@ -1,7 +1,7 @@
 """Offline contracts for batch collection, experiment identity and recovery."""
 
-import json
 import builtins
+import json
 import threading
 from urllib import error
 
@@ -10,6 +10,34 @@ import pytest
 from lightrag.evaluation import batch_baseline as batch
 
 pytestmark = pytest.mark.offline
+
+
+@pytest.mark.parametrize("applied,expected", [(True, "success"), (False, "unverified")])
+def test_requested_rerank_fallback_is_not_reported_as_success(applied, expected):
+    body = {
+        "status": "success",
+        "data": {"chunks": []},
+        "metadata": {
+            "retrieval": {
+                "rerank_requested": True,
+                "rerank_applied": applied,
+                "candidate_count": 20,
+            }
+        },
+    }
+    assert batch.outcome("retrieval", 200, body) == expected
+
+
+@pytest.mark.parametrize(
+    "metadata", [None, "invalid", [], {"retrieval": None}, {"retrieval": "invalid"}]
+)
+def test_malformed_optional_rerank_metadata_does_not_break_collection(metadata):
+    assert (
+        batch.outcome(
+            "retrieval", 200, {"status": "success", "data": {}, "metadata": metadata}
+        )
+        == "success"
+    )
 
 
 class FakeClient:
@@ -359,7 +387,7 @@ def test_http_client_uses_utf8_and_auth_headers_without_leaking_to_output(monkey
             pass
 
         def read(self):
-            return '{"response": "中文"}'.encode("utf-8")
+            return '{"response": "中文"}'.encode()
 
     class Opener:
         def open(self, req, timeout):

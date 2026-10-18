@@ -9,6 +9,22 @@ from lightrag.addon_params import ObservableAddonParams
 pytestmark = pytest.mark.offline
 
 
+def test_rerank_candidate_environment_and_explicit_override(monkeypatch):
+    from lightrag.addon_params import normalize_addon_params
+
+    monkeypatch.setenv("RERANK_CANDIDATE_K", "20")
+    assert normalize_addon_params({})["rerank_candidate_k"] == 20
+    assert normalize_addon_params({"rerank_candidate_k": 0})["rerank_candidate_k"] == 0
+
+
+@pytest.mark.parametrize("value", [-1, True, "20", None])
+def test_rerank_candidate_setting_rejects_invalid_values(value):
+    from lightrag.addon_params import normalize_addon_params
+
+    with pytest.raises(ValueError, match="non-negative integer"):
+        normalize_addon_params({"rerank_candidate_k": value})
+
+
 def test_update_commits_valid_input_and_notifies_once() -> None:
     changes: list[str] = []
     params = ObservableAddonParams(

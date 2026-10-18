@@ -1000,6 +1000,12 @@ async def _edit_entity_impl(
     """
     new_entity_name = updated_data.get("entity_name", entity_name)
     is_renaming = new_entity_name != entity_name
+    if is_renaming and any(
+        " ⟦printer:" in str(name) for name in (entity_name, new_entity_name)
+    ):
+        raise ValueError(
+            "Business entity identities are source-managed; reprocess instead of renaming"
+        )
 
     original_entity_name = entity_name
 
@@ -2763,6 +2769,11 @@ async def _merge_entities_impl(
             **merge_strategy,
         }
     target_entity_data = {} if target_entity_data is None else target_entity_data
+
+    if any(" ⟦printer:" in str(name) for name in [*source_entities, target_entity]):
+        raise ValueError(
+            "Business entity identities cannot be manually merged; reprocess their sources"
+        )
 
     # 1. Check if all source entities exist
     source_entities_data = {}

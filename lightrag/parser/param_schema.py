@@ -40,6 +40,7 @@ from lightrag.constants import (
     PARSER_ENGINE_MINERU,
     PARSER_ENGINE_NATIVE,
     PROCESS_OPTION_CHUNK_CUSTOM,
+    PROCESS_OPTION_CHUNK_PARENT_CHILD,
     PROCESS_OPTION_CHUNK_FIXED,
     PROCESS_OPTION_CHUNK_PARAGRAH,
     PROCESS_OPTION_CHUNK_RECURSIVE,
@@ -131,6 +132,7 @@ class ParamSpec:
 
 _ALL_CHUNK_SELECTORS = frozenset(
     {
+        PROCESS_OPTION_CHUNK_PARENT_CHILD,
         PROCESS_OPTION_CHUNK_FIXED,
         PROCESS_OPTION_CHUNK_RECURSIVE,
         PROCESS_OPTION_CHUNK_VECTOR,
@@ -156,6 +158,7 @@ _CHUNK_PARAM_SPECS: tuple[ParamSpec, ...] = (
         # Semantic-vector (V) chunking has no overlap concept.
         targets=frozenset(
             {
+                PROCESS_OPTION_CHUNK_PARENT_CHILD,
                 PROCESS_OPTION_CHUNK_FIXED,
                 PROCESS_OPTION_CHUNK_RECURSIVE,
                 PROCESS_OPTION_CHUNK_PARAGRAH,

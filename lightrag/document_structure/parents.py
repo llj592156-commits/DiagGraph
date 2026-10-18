@@ -907,6 +907,9 @@ def organize(
     scope_rules: Path | None = None,
     max_parent_chars: int = 10000,
     structure_rules: Path | None = None,
+    *,
+    document_name: str | None = None,
+    doc_id: str | None = None,
 ) -> ParentPreparation:
     """Organize an existing parsed document without writing or indexing it."""
     if max_parent_chars < 1:
@@ -915,10 +918,13 @@ def organize(
     if len(files) != 1:
         raise ValueError("parsed-dir must contain exactly one blocks.jsonl")
     meta, blocks = read_sidecar(files[0])
-    if meta.get("document_name") != pdf.name:
+    name = document_name or pdf.name
+    if meta.get("document_name") != name:
         raise ValueError("PDF filename does not match sidecar document_name")
+    if doc_id:
+        meta = {**meta, "doc_id": doc_id}
     pdf_hash = file_hash(pdf)
-    manifest = parsed_dir.parent / f"{pdf.name}.docling_raw" / "_manifest.json"
+    manifest = parsed_dir.parent / f"{name}.docling_raw" / "_manifest.json"
     identity_verified = False
     if manifest.is_file():
         raw_meta = json.loads(manifest.read_text(encoding="utf-8"))
@@ -928,10 +934,10 @@ def organize(
             )
         identity_verified = True
     bookmarks, heights, reader = read_pdf(pdf, meta["doc_id"])
-    rules = load_rules(scope_rules, pdf.name, reader)
+    rules = load_rules(scope_rules, name, reader)
     origin = meta.get("bbox_attributes", {}).get("origin", "LEFTBOTTOM")
     working_blocks, recovery = blocks, []
-    raw_path = manifest.parent / f"{pdf.stem}.json"
+    raw_path = manifest.parent / f"{Path(name).stem}.json"
     drawings_path = files[0].with_name(
         files[0].name.replace(".blocks.jsonl", ".drawings.json")
     )
@@ -957,7 +963,7 @@ def organize(
                 "message": "No adjacent Docling raw manifest",
             }
         )
-    styles = load_structure_rules(structure_rules, pdf.name)
+    styles = load_structure_rules(structure_rules, name)
     parents = build_parents(
         meta, working_blocks, sections, rules, max_parent_chars, styles
     )
@@ -975,7 +981,7 @@ def organize(
             )
     summary = {
         "schema_version": VERSION,
-        "document_name": pdf.name,
+        "document_name": name,
         "doc_id": meta["doc_id"],
         **coverage,
         "pdf_pages": len(heights),

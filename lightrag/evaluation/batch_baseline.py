@@ -151,12 +151,25 @@ class APIClient:
         self.token = body["access_token"]
 
 
+def _retrieval_metadata(body: Any) -> dict:
+    metadata = body.get("metadata") if isinstance(body, dict) else None
+    retrieval = metadata.get("retrieval") if isinstance(metadata, dict) else None
+    return retrieval if isinstance(retrieval, dict) else {}
+
+
 def outcome(stage: str, http_status: int | None, body: Any) -> str:
     """Separate transport/service errors from valid retrieval with no evidence."""
     if http_status is None or not 200 <= http_status < 300:
         return "error"
     if not isinstance(body, dict):
         return "error"
+    retrieval = _retrieval_metadata(body)
+    if (
+        retrieval.get("rerank_requested")
+        and retrieval.get("candidate_count", 0) > 0
+        and not retrieval.get("rerank_applied")
+    ):
+        return "unverified"
     if stage == "answer":
         if not isinstance(body.get("response"), str):
             return "error"
@@ -311,7 +324,15 @@ def render_report(output: Path, config: dict) -> dict:
         }
         times = [r["latency_ms"] for r in rows if r["outcome"] == "success"]
         median = round(statistics.median(times), 2) if times else None
-        summary["modes"][mode] = {**counts, "median_success_latency_ms": median}
+        rerank_applied = sum(
+            bool(_retrieval_metadata(row.get("response")).get("rerank_applied"))
+            for row in rows
+        )
+        summary["modes"][mode] = {
+            **counts,
+            "median_success_latency_ms": median,
+            "confirmed_rerank_applied": rerank_applied,
+        }
         lines.append(
             f"| {mode} | {counts['success']} | {counts['no_results']} | "
             f"{counts['unverified']} | {counts['error']} | {median if median is not None else '未知'} |"
@@ -337,8 +358,10 @@ def render_report(output: Path, config: dict) -> dict:
             refs = dict_items(body.get("references"))
         else:
             lines += [
-                f"实体 {len(dict_items(data.get('entities')))}；关系 {len(dict_items(data.get('relationships')))}；"
-                f"片段 {len(dict_items(data.get('chunks')))}。",
+                (
+                    f"实体 {len(dict_items(data.get('entities')))}；关系 {len(dict_items(data.get('relationships')))}；"
+                    f"片段 {len(dict_items(data.get('chunks')))}。"
+                ),
                 "",
             ]
             refs = dict_items(data.get("references"))

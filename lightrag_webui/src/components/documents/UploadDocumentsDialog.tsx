@@ -10,6 +10,8 @@ import {
   DialogTrigger
 } from '@/components/ui/Dialog'
 import FileUploader from '@/components/ui/FileUploader'
+import UploadChunkingSelect from './UploadChunkingSelect'
+import type { UploadChunkingStrategy } from '@/lib/uploadChunking'
 import { toast } from 'sonner'
 import { supportedFileTypes } from '@/lib/constants'
 import {
@@ -42,6 +44,7 @@ export default function UploadDocumentsDialog({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [chunkingStrategy, setChunkingStrategy] = useState<UploadChunkingStrategy>('auto')
   const [progresses, setProgresses] = useState<Record<string, number>>({})
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({})
   const [fileTypes, setFileTypes] = useState<FileTypesState>({ status: 'idle' })
@@ -142,7 +145,7 @@ export default function UploadDocumentsDialog({
                 ...pre,
                 [file.name]: percentCompleted
               }))
-            })
+            }, chunkingStrategy)
 
             if (result.status !== 'success') {
               uploadErrors[file.name] = result.message
@@ -236,7 +239,7 @@ export default function UploadDocumentsDialog({
         setIsUploading(false)
       }
     },
-    [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, onUploadBatchAccepted]
+    [setIsUploading, setProgresses, setFileErrors, t, onDocumentsUploaded, onUploadBatchAccepted, chunkingStrategy]
   )
 
   const uploaderInputs = deriveUploaderInputs(fileTypes)
@@ -273,6 +276,7 @@ export default function UploadDocumentsDialog({
             {t('documentPanel.uploadDocuments.description')}
           </DialogDescription>
         </DialogHeader>
+        <UploadChunkingSelect value={chunkingStrategy} onChange={setChunkingStrategy} disabled={isUploading} />
         <FileUploader
           maxFileCount={Infinity}
           maxSize={200 * 1024 * 1024}
@@ -286,7 +290,7 @@ export default function UploadDocumentsDialog({
           progresses={progresses}
           fileErrors={fileErrors}
           disabled={isUploading || uploaderInputs.disabled}
-          acceptedExtensions={uploaderInputs.acceptedExtensions}
+          acceptedExtensions={chunkingStrategy === 'H' ? ['.pdf'] : uploaderInputs.acceptedExtensions}
           engineCapabilities={uploaderInputs.engineCapabilities}
         />
       </DialogContent>

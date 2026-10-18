@@ -162,7 +162,14 @@ def messages(sample: dict) -> list[dict]:
     ]
 
 
-def call_model(settings: dict, prompt: list[dict]) -> dict:
+def call_model(
+    settings: dict, prompt: list[dict], *, response_format: dict | None = None
+) -> dict:
+    from http.client import HTTPException
+    from ssl import SSLCertVerificationError
+
+    from lightrag.extraction.errors import ExtractionRequestError
+
     class NoRedirect(request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
@@ -175,6 +182,10 @@ def call_model(settings: dict, prompt: list[dict]) -> dict:
         "stream": False,
         **settings["extra_body"],
     }
+    if response_format is not None:
+        if response_format != {"type": "json_object"}:
+            raise ValueError("This extraction client supports JSON object output only")
+        payload["response_format"] = response_format
     req = request.Request(
         settings["base_url"] + "/chat/completions",
         data=json.dumps(payload).encode(),
@@ -192,10 +203,20 @@ def call_model(settings: dict, prompt: list[dict]) -> dict:
     except error.HTTPError as exc:
         status = exc.code
         exc.close()
-        raise RuntimeError(f"Extraction HTTP {status}; no automatic retry") from None
-    except (error.URLError, TimeoutError):
-        raise RuntimeError(
-            "Extraction connection/timeout failure; no automatic retry"
+        raise ExtractionRequestError(
+            f"Extraction HTTP {status}",
+            retryable=status in {408, 429} or 500 <= status <= 599,
+            status=status,
+        ) from None
+    except (error.URLError, TimeoutError, ConnectionError, HTTPException) as exc:
+        certificate_error = isinstance(
+            getattr(exc, "reason", exc), SSLCertVerificationError
+        )
+        raise ExtractionRequestError(
+            "Extraction TLS certificate verification failure"
+            if certificate_error
+            else "Extraction connection/timeout failure",
+            retryable=not certificate_error,
         ) from None
 
 

@@ -14,11 +14,11 @@ module exposes:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
 
 from lightrag.constants import DEFAULT_SUMMARY_LANGUAGE
 from lightrag.utils import get_env_value, logger
-
 
 # Keys that used to live in addon_params but have been superseded by
 # per-document ``process_options``.  We log once when callers still pass them
@@ -47,6 +47,8 @@ def default_addon_params() -> dict[str, Any]:
     return {
         "language": get_env_value("SUMMARY_LANGUAGE", DEFAULT_SUMMARY_LANGUAGE, str),
         "entity_type_prompt_file": get_env_value("ENTITY_TYPE_PROMPT_FILE", "", str),
+        "extraction_profile": get_env_value("EXTRACTION_PROFILE", "generic", str),
+        "rerank_candidate_k": get_env_value("RERANK_CANDIDATE_K", 0, int),
         # Per-strategy chunker parameters; mutate at runtime (e.g.
         # ``rag.addon_params["chunker"]["recursive_character"]["separators"]
         # = [...]``) to change defaults applied to subsequently
@@ -85,6 +87,19 @@ def normalize_addon_params(addon_params: Mapping[str, Any] | None) -> dict[str, 
         "entity_type_prompt_file",
         get_env_value("ENTITY_TYPE_PROMPT_FILE", "", str),
     )
+    normalized.setdefault(
+        "extraction_profile", get_env_value("EXTRACTION_PROFILE", "generic", str)
+    )
+    normalized.setdefault(
+        "rerank_candidate_k", get_env_value("RERANK_CANDIDATE_K", 0, int)
+    )
+    candidate_k = normalized["rerank_candidate_k"]
+    if (
+        isinstance(candidate_k, bool)
+        or not isinstance(candidate_k, int)
+        or candidate_k < 0
+    ):
+        raise ValueError("rerank_candidate_k must be a non-negative integer")
     # Build the chunker default lazily. An explicit caller-supplied chunker
     # bypasses the environment entirely, including a malformed environment
     # value.

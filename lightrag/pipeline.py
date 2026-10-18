@@ -1138,6 +1138,11 @@ class _PipelineMixin:
             # so the per-doc parameters are frozen even when ``F``
             # (default) is used.
             content_data["chunk_options"] = _chunk_options_at(index)
+            from lightrag.extraction.runtime import snapshot_config
+
+            content_data["extraction_config"] = snapshot_config(
+                self.addon_params.get("extraction_profile", "generic")
+            )
             contents[doc_id] = content_data
 
         # ``ids`` outranks ``docs_format`` by design: explicit ids mark the
@@ -1519,6 +1524,9 @@ class _PipelineMixin:
                 for doc_id in new_docs.keys()
             }
             for doc_id in new_docs.keys():
+                full_docs_data[doc_id]["extraction_config"] = contents[doc_id][
+                    "extraction_config"
+                ]
                 if contents[doc_id].get("content_hash"):
                     full_docs_data[doc_id]["content_hash"] = contents[doc_id][
                         "content_hash"
@@ -5176,6 +5184,7 @@ class _PipelineMixin:
                 chunk_opts_str: str = ""
                 chunk_method: str = "fixed_token_fallback"
                 sidecar_backfill_eligible = False
+                parent_child_bundle = None
 
                 from lightrag.chunker import chunking_by_token_size
 
@@ -5328,6 +5337,46 @@ class _PipelineMixin:
                                     f"for d-id {doc_id}: {exc}"
                                 ) from exc
                             chunk_method = _CUSTOM_CHUNKING_METHOD
+                    elif strategy == "H":
+                        from lightrag.chunker.parent_child import prepare_parent_child
+
+                        if (
+                            chunking_context.parse_engine != "docling"
+                            or not str(file_path).lower().endswith(".pdf")
+                        ):
+                            raise ValueError(
+                                "H parent-child chunking requires a PDF parsed with Docling"
+                            )
+                        if (
+                            doc_process_opts.images
+                            or doc_process_opts.tables
+                            or doc_process_opts.equations
+                        ):
+                            raise ValueError(
+                                "H indexes structured tables directly; separate i/t/e "
+                                "analysis is not supported with H"
+                            )
+                        h_opts = dict(chunk_opts.get("parent_child") or {})
+                        source_pdf = _call_source_file_resolver(
+                            self, file_path, source_file=_read_source_file(content_data)
+                        )
+                        h_result = await run_in_chunking_executor(
+                            prepare_parent_child,
+                            self.tokenizer,
+                            source_pdf,
+                            str(parsed_data.get("blocks_path") or ""),
+                            doc_id,
+                            str(file_path),
+                            **h_opts,
+                        )
+                        chunking_result, parent_child_bundle = h_result.chunks, h_result.bundle
+                        chunk_method = "parent_child"
+                        chunk_opts_str = _format_chunking_params(
+                            h_opts.get("chunk_token_size", 500), h_opts
+                        )
+                        extraction_meta["parent_child_version"] = parent_child_bundle[
+                            "version"
+                        ]
                     elif strategy == "P":
                         # P carries its own ``chunk_token_size`` (CHUNK_P_SIZE
                         # env or ``addon_params['chunker']['paragraph_semantic']``);
@@ -5689,6 +5738,31 @@ class _PipelineMixin:
                 chunks = build_chunks_dict_from_chunking_result(
                     chunking_result, doc_id=doc_id, file_path=file_path
                 )
+                # Selection is independent of the chunker and frozen at enqueue.
+                # Legacy documents without a snapshot keep generic extraction.
+                extraction_config = (content_data or {}).get(
+                    "extraction_config", {"profile": "generic"}
+                )
+                if extraction_config.get("profile") == "printer_v2":
+                    from lightrag.extraction.runtime import assert_contract
+
+                    assert_contract(extraction_config)
+                    for chunk in chunks.values():
+                        chunk["extraction_config"] = dict(extraction_config)
+                if parent_child_bundle is not None:
+                    for parent in parent_child_bundle["parents"].values():
+                        parent["indexed_chunk_ids"] = []
+                    for key, chunk in chunks.items():
+                        parent_id = chunk["parent_child"]["parent_id"]
+                        parent_child_bundle["parents"][parent_id][
+                            "indexed_chunk_ids"
+                        ].append(key)
+                    # Parent evidence precedes child publication. A failed child
+                    # stage may leave an unused bundle on this owning doc row;
+                    # retry replaces it and ordinary doc deletion removes it.
+                    await self.full_docs.upsert(
+                        {doc_id: {**content_data, "parent_child": parent_child_bundle}}
+                    )
 
                 if not chunks:
                     logger.warning("No document chunks to process")

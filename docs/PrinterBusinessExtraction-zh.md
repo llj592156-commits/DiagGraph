@@ -1,10 +1,36 @@
-# 打印机故障诊断业务抽取规范 v1
+# 打印机故障诊断业务抽取提示 v2
 
-本阶段定义业务实体、关系及输出约定，提供可运行的六样本真实抽取入口，以及兼容原生 LightRAG 的提示词配置。真实 API 由用户执行；开发验证使用 mock。没有注册上传策略，没有将三个文档全量抽取或写入知识库，也没有接入正式实体身份合并、范围过滤、父块展开、Adaptive RAG 或 Self-RAG。
+本阶段定义业务实体、关系及输出约定，提供可运行的六样本真实抽取入口，以及兼容原生 LightRAG 的提示词配置。真实 API 由用户执行；开发验证使用 mock。业务抽取 v2 现已通过可选 printer_v2 配置接入原生入库，默认仍为 generic。支持各切分方式、逐条校验、来源保存及合并前身份转换；没有启用真实模型或重新处理三份文档。查询范围硬过滤、Adaptive RAG 和 Self-RAG 尚未接入。见 [系统接入说明](PrinterGraphSystemIntegration-zh.md)。
 
 ## 实体和关系
 
-唯一规范源是 `lightrag/extraction/printer.py`，版本 `printer-business-extraction-v1`。
+唯一规范源是 `lightrag/extraction/printer.py`，当前提示版本 `printer-business-extraction-v2`。本次只加强抽取规则的说明和教学示例，没有修改 12 类实体、10 类关系的类型集合、端点约束、输出字段或逐条校验算法。v1 的已保存结果不会因此自动变成合格记录。
+
+## v2 本轮修改
+
+- 把“检查 IP 地址是否冲突”等检查项明确表示为 Procedure，再通过 HANDLED_BY 连接故障码；不把检查项写成故障码的 REQUIRES。
+- 区分执行前提、禁止事项、持续提示状态和“即使……也可能……”的让步警告；不能因出现“之前”就建立前提关系。
+- 用真实的脚注内容保留部件寿命与整机寿命的区别；不能只引用 `*1`/`*2` 标记。
+- 表格引用分成连续单元格原文，不允许删掉其他单元格后添加数组闭合符号，也不允许用省略号拼接代码和处理方法。
+- 为网络排查、W-11 表格与按钮/禁止事项/脚注、ADF 型号与否定规格提供三组完整的教学输入和合规 JSON 输出。
+- 明确 HAS_SPEC 的终点是 Specification，负面能力“不支持”必须进入规格名称和描述；使用频率影响不能硬写成部件具有某种功能规格。
+
+完整系统提示原文：[printer_business_extraction.v2.md](../prompts/samples/printer_business_extraction.v2.md)。该文件由 `system_prompt()` 原样导出，测试保证与运行时一致。教学示例位于 `lightrag/extraction/printer_examples.py`，用于告诉模型怎样表达，不能当作真实业务验收结果或当前输入事实。
+
+每次实际请求包含该系统提示和以下动态 user 消息（占位内容会替换为当前样本）：
+
+```json
+{
+  "metadata": {
+    "document_name": "<当前文档名>",
+    "heading_path": ["<章节路径>"],
+    "domain": "<已有场景标记>"
+  },
+  "source_text": "<当前子块或实验片段的原文，含相关表头和脚注>"
+}
+```
+
+本轮没有调用模型，没有用新提示重跑六样本，没有声称抽取质量已提高，也没有开始知识库集成。新提示效果需要后续真实输出验证；软件测试只验证示例、导出、格式和现有校验边界。
 
 实体类型：
 
@@ -94,7 +120,7 @@ Set-Location D:\GitHubCode\LightRAG
 .\examples\parent_blocks\run_printer_business_extraction.ps1 -Resume
 ```
 
-默认新目录 `outputs/printer_business_extraction/manual_run_v1`。查看 `prompts.json` 和 `samples.json`；`experiment.json` 冻结提示、源样本、配置和依赖代码摘要，不保存密钥。预检不请求任何模型。
+当前默认新目录 `outputs/printer_business_extraction/manual_run_v2`。已完成的 v1 请求和结果保留在 `manual_run_v1`；提示或依赖代码已变，不能在旧目录恢复新版本。这里提供的是以后需要时的运行说明，本轮不要求再次付费测试。查看 `prompts.json` 和 `samples.json`；`experiment.json` 冻结提示、源样本、配置和依赖代码摘要，不保存密钥。预检不请求任何模型。
 
 用户决定执行真实抽取时：
 
@@ -104,20 +130,20 @@ Set-Location D:\GitHubCode\LightRAG
 
 最多六次新抽取请求，使用现有 EXTRACT 配置；没有 embedding、关键词、回答或评分模型调用。默认输出上限 6144，每份最多 12 实体、16 关系。无自动重试；成功响应保存后恢复复用，包括有隔离记录的响应。更改提示、模型、参数、输入或依赖代码后使用新目录，不能复用旧计划。
 
-`summary.json` 为累计 usage/计数；`validation.json` 保存被隔离记录及原因；`extractions.json` 为保留输出；`evidence_records.json` 为带来源输出；`report.md` 列出逐项语义验收要点。存在解析错误、隔离记录或空样本时退出码 2，PowerShell 会提示检查文件；不是六次请求都失败，也不会自动重试补全。
+`summary.json` 为累计 usage/计数；`validation.json` 保存被隔离记录及原因；`extractions.json` 为保留输出；`evidence_records.json` 为带来源输出；`report.md` 列出逐项语义验收要点。存在解析错误、隔离记录或空样本时 Python 入口仍返回退出码 2。PowerShell 包装脚本仅在本次调用确实写出了与计划对应的新审核摘要时，将它显示为醒目的“已完成、质量待审核”警告；其他非零退出仍抛异常。警告不会批准入库，也不会改变、放宽或重试任何被拒记录。自动化若需要原始质量退出码，应直接调用 Python 模块。
 
 ## 原生 LightRAG 兼容配置
 
-`prompts/samples/printer_diagnosis.v1.yml` 从同一规范导出，包含业务类型、规则、关系词表和 text/JSON 两种原生输出模板。原生模板只使用其支持的字段：实体 `name/type/description`，关系 `source/target/keywords/description`。原生关系词表是提示约束；本阶段没有给原生入库增加强制 schema 校验。
+`prompts/samples/printer_diagnosis.v2.yml` 从同一规范导出，包含业务类型、规则、关系词表和 text/JSON 两种原生输出模板。旧 `printer_diagnosis.v1.yml` 保留作历史配置。原生模板只使用其支持的字段：实体 `name/type/description`，关系 `source/target/keywords/description`；三个带额外字段的完整 JSON 示例只用于增强实验提示，不能直接作为原生输出模板。原生关系词表是提示约束；本阶段没有给原生入库增加强制 schema 校验。
 
 额外的引用和条件数组由增强实验入口保存。仅启用 YAML 不会让原生存储自动保存这些字段，也不会实现消歧或硬型号过滤。
 
-本轮不改 `.env`。以后在独立知识库试用原生配置时，先复制配置：
+本轮不改 `.env`。若单独使用原生兼容 YAML，可复制配置（这不是 printer_v2 增强入口）：
 
 ```powershell
 New-Item -ItemType Directory -Force .\prompts\entity_type | Out-Null
-Copy-Item .\prompts\samples\printer_diagnosis.v1.yml .\prompts\entity_type\printer_diagnosis.v1.yml
-$env:ENTITY_TYPE_PROMPT_FILE = 'printer_diagnosis.v1.yml'
+Copy-Item .\prompts\samples\printer_diagnosis.v2.yml .\prompts\entity_type\printer_diagnosis.v2.yml
+$env:ENTITY_TYPE_PROMPT_FILE = 'printer_diagnosis.v2.yml'
 $env:ENTITY_EXTRACTION_USE_JSON = 'true'
 ```
 
@@ -127,6 +153,13 @@ $env:ENTITY_EXTRACTION_USE_JSON = 'true'
 
 ```powershell
 .\.venv\Scripts\python.exe -m lightrag.extraction.printer --export-profile tmp/printer_diagnosis.updated.yml
+.\.venv\Scripts\python.exe -m lightrag.extraction.printer --export-system-prompt tmp/printer_business_prompt.updated.md
 ```
 
 导出拒绝覆盖已有文件，避免覆盖手动修改的提示词。配置与规范的一致性、原生两种模式可加载性、逐条隔离、代码前导零、来源范围不变、预检/恢复不重复请求均有离线软件测试；业务质量仍由新的真实输出验收。
+
+## 原生系统接入状态
+
+现已新增独立于切分方式的 `printer_v2` 抽取方案，包括增强 JSON 校验、事实引用与条件保存、实体身份及关系端点转换、缓存重建和来源保护。通过 `EXTRACTION_PROFILE` 或 `addon_params["extraction_profile"]` 选择，默认 `generic`。只复制 YAML 仍不等于启用这条增强路径。
+
+完整配置、范围与限制见 [业务图谱系统接入](PrinterGraphSystemIntegration-zh.md)。当前尚未全量建图，下一步由用户运行小样本真实入库；图谱查询范围过滤后续接入。

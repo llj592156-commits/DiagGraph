@@ -87,6 +87,7 @@ from lightrag.constants import (
     PARSED_ARTIFACT_DIR_SUFFIXES,
     PARSED_DIR_NAME,
     PROCESS_OPTION_CHUNK_CUSTOM,
+    PROCESS_OPTION_CHUNK_PARENT_CHILD,
     PROCESS_OPTION_CHUNK_FIXED,
     PROCESS_OPTION_CHUNK_PARAGRAH,
     PROCESS_OPTION_CHUNK_RECURSIVE,
@@ -615,6 +616,7 @@ class CancelPipelineResponse(BaseModel):
 
 
 TextChunkingStrategy = Literal[
+    "parent_child",
     "fixed_token",
     "recursive_character",
     "semantic_vector",
@@ -760,6 +762,7 @@ class SemanticVectorChunkParams(_StrictChunkParams):
 
 
 _CHUNKING_PARAMS_MODEL: dict[str, type[_StrictChunkParams]] = {
+    "parent_child": _OverlapChunkParams,
     "fixed_token": FixedTokenChunkParams,
     "recursive_character": RecursiveCharacterChunkParams,
     "semantic_vector": SemanticVectorChunkParams,
@@ -2649,6 +2652,7 @@ async def pipeline_enqueue_scan_batch(
 
 
 _STRATEGY_TO_PROCESS_OPTION: Dict[str, str] = {
+    "parent_child": PROCESS_OPTION_CHUNK_PARENT_CHILD,
     "fixed_token": PROCESS_OPTION_CHUNK_FIXED,
     "recursive_character": PROCESS_OPTION_CHUNK_RECURSIVE,
     "semantic_vector": PROCESS_OPTION_CHUNK_VECTOR,
@@ -2715,6 +2719,11 @@ def _resolve_text_chunking(
             rag.addon_params, process_options=process_options
         )
 
+    if chunking.strategy == "parent_child":
+        raise ValueError(
+            "parent_child/H requires an uploaded PDF and Docling sidecars; "
+            "text inserts have no PDF structure"
+        )
     process_options = _STRATEGY_TO_PROCESS_OPTION[chunking.strategy]
     _validate_custom_chunking_available(process_options, rag)
     chunk_options = resolve_chunk_options(

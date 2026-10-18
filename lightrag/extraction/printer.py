@@ -1,6 +1,6 @@
 """Printer extraction schema and record validation.
 
-Use this contract for opt-in extraction experiments. Quote checks establish
+Use this contract for opt-in experiments and the printer_v2 native profile. Quote checks establish
 source presence only; they do not establish entailment or restriction scope.
 See docs/PrinterBusinessExtraction-zh.md for the native profile boundary.
 """
@@ -15,7 +15,9 @@ from pathlib import Path
 
 import yaml
 
-VERSION = "printer-business-extraction-v1"
+from lightrag.extraction.printer_examples import render_examples
+
+VERSION = "printer-business-extraction-v2"
 MAX_ENTITIES = 12
 MAX_RELATIONSHIPS = 16
 
@@ -106,6 +108,34 @@ Do not turn every noun into a node or invent missing relationship endpoints.
 Source IDs and filename-default model scope are attached by the program, not invented
 by the model. A local restriction is not a restriction on the entire parent block.
 Do not perform global entity merging or invent internal entity IDs during extraction.
+
+Represent a recommended check as a Procedure with an action name, e.g. 检查 IP 地址是否冲突.
+Connect FaultCode/Symptom to that Procedure with HANDLED_BY. Do not turn a checklist's
+desired state into a prerequisite of the fault code. FaultCode REQUIRES Condition is
+invalid. A checking instruction alone is not proof of a cause or a mandatory precondition.
+Use REQUIRES only for a Procedure/Feature with a source-stated Condition that must hold
+before the operation/use. Keep it in that relation's prerequisite qualifiers as well.
+Negations such as 不能由用户更换 are prohibition qualifiers, not Condition entities or
+execution prerequisites. A message remaining visible before replacement is a persistent
+state, not a prerequisite. Preserve that state in the relevant description. Even-if
+warnings describe possibilities despite a condition; do not turn them into prerequisites
+or assert that the warned failure always happens.
+INDICATES is only FaultCode -> Symptom. A feature is not an error code. For an explicit
+symptom concerning ADF, Symptom INVOLVES Feature may be appropriate; it is not causation.
+HAS_SPEC must end at a Specification, including its actual value and unit. For negative
+capability, preserve 不支持 in both the specification name/description and relation
+description. Feature support and a factor affecting replacement frequency are different:
+never encode Component HAS_SPEC Feature merely because frequency depends on feature use.
+If no allowed relation accurately expresses a supported detail, preserve it in a relevant
+entity description or qualifying footnote rather than inventing or forcing an edge.
+For table evidence, quote complete cell text or separate continuous substrings. Do not
+construct a shorter JSON row by deleting cells and adding closing brackets. Do not put
+ellipsis between a code and its remedy. Quote them in separate array items instead.
+Do not use a footnote marker alone as the footnote's content. Read the qualifying text,
+retain its relevant meaning in descriptions and attach a footnote qualifier to each
+affected selected relationship. Do not infer that every footnote applies to every row.
+Prioritize fewer complete, useful facts over many incomplete ones. Preserve the selected
+facts' restrictions and button symbols before adding optional entities or relationships.
 """
 
 
@@ -138,24 +168,20 @@ of source_text, without extra surrounding quotation marks or invented ellipses. 
 separated passages use separate strings, never concatenate them into a single quote.
 Quotes must support the specific record; a present quote alone does not prove meaning.
 Preserve negations and restrictions in descriptions as well as qualifier records.
-Business examples (illustrations only, never additional source facts):
-- Source: "请联系爱普生认证服务机构更换。它不能由用户更换。"
-  Organization: 爱普生认证服务机构. Procedure: 联系认证服务机构更换.
-  Procedure PERFORMED_BY Organization. Preserve "它不能由用户更换。" as a
-  prohibition qualifier on affected relations; do not type the organization Procedure.
-- Source: "以下功能仅适用于 L5298：传真。"
-  Feature: 传真. DeviceModel: L5298. Feature LIMITED_TO DeviceModel.
-  Include a model_restriction qualifier quoting the full limitation. Do not assert
-  support for any other model from the document filename.
-- Source: "按下 x 按钮可恢复打印。"
-  Procedure: 按下 x 按钮恢复打印. Keep a button qualifier and the exact symbol x.
-  Do not rename this operation 修复废墨垫 or infer that replacement is unnecessary.
 At most {MAX_ENTITIES} entities and {MAX_RELATIONSHIPS} relationships. Fewer are fine.
 If nothing is supported, return empty arrays. Do not pad the output.
 
 Output shape (placeholders are not source facts):
 {{"entities":[{{"name":"<name>","type":"Procedure","description":"<description>",
 "evidence_quotes":["<continuous source quote>"]}}],"relationships":[]}}
+
+Worked examples are teaching data, never facts from the current input. They illustrate
+format and semantics only. Copy no code, model, button or fact unless the current
+source_text supports it. Example-specific qualifiers are not universal rules.
+{render_examples()}
+
+Before returning: check every endpoint type, exact code, source quote and relevant
+qualification against the current source_text. Do not explain this check in the output.
 """
 
 
@@ -241,8 +267,18 @@ def _record(record: dict, fields: set[str], text: str) -> None:
     _quotes(record, text)
 
 
-def review_response(response: dict, sample: dict) -> dict:
-    """Quarantine invalid records without rewriting the raw model response."""
+def review_response(
+    response: dict, sample: dict, *, record_limit_policy: str = "strict"
+) -> dict:
+    """Keep raw responses intact; native admission may quarantine surplus rows.
+
+    ``strict`` retains the experiment's whole-response record-limit check.
+    ``quarantine`` admits only records within the original ordered limits and
+    rejects surplus rows plus any relationships whose endpoints were rejected.
+    JSON structure, truncation, endpoint and quote checks are unchanged.
+    """
+    if record_limit_policy not in {"strict", "quarantine"}:
+        raise ValueError("Unknown extraction record limit policy")
     accepted = {"entities": [], "relationships": []}
     review = {
         "accepted": accepted,
@@ -250,6 +286,7 @@ def review_response(response: dict, sample: dict) -> dict:
         "sample_error": None,
         "semantic_review_required": True,
         "validation_scope": "Schema, endpoint types and quote presence; not entailment",
+        "record_limit_policy": record_limit_policy,
     }
     try:
         choices = response.get("choices", [])
@@ -262,8 +299,12 @@ def review_response(response: dict, sample: dict) -> dict:
             ("entities", MAX_ENTITIES),
             ("relationships", MAX_RELATIONSHIPS),
         ):
-            if not isinstance(value[key], list) or len(value[key]) > limit:
-                raise ValueError("Invalid extraction array or record limit")
+            if not isinstance(value[key], list):
+                raise TypeError(f"{key} must be an array")
+            if len(value[key]) > limit and record_limit_policy == "strict":
+                raise ValueError(
+                    f"{key} contains {len(value[key])} records; limit is {limit}"
+                )
     except (ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
         review["sample_error"] = str(exc)
         return review
@@ -282,8 +323,13 @@ def review_response(response: dict, sample: dict) -> dict:
         > 1
     }
     for kind, accepted_records in accepted.items():
+        limit = MAX_ENTITIES if kind == "entities" else MAX_RELATIONSHIPS
         for index, record in enumerate(value[kind]):
             try:
+                if index >= limit:
+                    raise ValueError(
+                        f"Surplus {kind} record beyond admission limit {limit}; raw record retained"
+                    )
                 if kind == "entities":
                     _record(record, {"name", "type", "description"}, text)
                     if (
@@ -360,15 +406,21 @@ def review_response(response: dict, sample: dict) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Export the opt-in native printer profile"
-    )
-    parser.add_argument("--export-profile", type=Path, required=True)
+    parser = argparse.ArgumentParser(description="Export the opt-in printer prompts")
+    export = parser.add_mutually_exclusive_group(required=True)
+    export.add_argument("--export-profile", type=Path)
+    export.add_argument("--export-system-prompt", type=Path)
     args = parser.parse_args(argv)
-    args.export_profile.parent.mkdir(parents=True, exist_ok=True)
+    destination = args.export_profile or args.export_system_prompt
+    destination.parent.mkdir(parents=True, exist_ok=True)
     # Do not overwrite an operator's customized profile.
-    with args.export_profile.open("x", encoding="utf-8") as target:
-        yaml.safe_dump(native_profile(), target, allow_unicode=True, sort_keys=False)
+    with destination.open("x", encoding="utf-8") as target:
+        if args.export_profile:
+            yaml.safe_dump(
+                native_profile(), target, allow_unicode=True, sort_keys=False
+            )
+        else:
+            target.write(system_prompt())
     return 0
 
 

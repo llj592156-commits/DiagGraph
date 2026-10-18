@@ -20,6 +20,7 @@ from lightrag.constants import (
     PARSER_ENGINE_NATIVE,
     PROCESS_OPTION_CHUNK_CHARS,
     PROCESS_OPTION_CHUNK_CUSTOM,
+    PROCESS_OPTION_CHUNK_PARENT_CHILD,
     PROCESS_OPTION_CHUNK_FIXED,
     PROCESS_OPTION_CHUNK_VECTOR,
     PROCESS_OPTION_CHUNK_PARAGRAH,
@@ -141,7 +142,7 @@ def decode_parse_engine(
 
 
 # ---------------------------------------------------------------------------
-# Per-file processing options (i/t/e/!/F/R/V/P/C)
+# Per-file processing options (i/t/e/!/F/R/V/P/C/H)
 # ---------------------------------------------------------------------------
 
 
@@ -211,7 +212,14 @@ def validate_process_options(
         errors.append(
             f"{label} specifies multiple chunking modes "
             f"({'/'.join(seen_chunkers)}); pick one of "
-            f"{PROCESS_OPTION_CHUNK_FIXED}/{PROCESS_OPTION_CHUNK_RECURSIVE}/{PROCESS_OPTION_CHUNK_VECTOR}/{PROCESS_OPTION_CHUNK_PARAGRAH}/{PROCESS_OPTION_CHUNK_CUSTOM}"
+            f"{PROCESS_OPTION_CHUNK_FIXED}/{PROCESS_OPTION_CHUNK_RECURSIVE}/{PROCESS_OPTION_CHUNK_VECTOR}/{PROCESS_OPTION_CHUNK_PARAGRAH}/{PROCESS_OPTION_CHUNK_CUSTOM}/{PROCESS_OPTION_CHUNK_PARENT_CHILD}"
+        )
+    if PROCESS_OPTION_CHUNK_PARENT_CHILD in seen_chunkers and any(
+        c in options for c in "ite"
+    ):
+        errors.append(
+            f"{label}: H indexes structured tables directly and cannot combine "
+            "with separate i/t/e analysis"
         )
     return errors
 
@@ -260,6 +268,7 @@ def parse_process_options(options: Any) -> ProcessOptions:
 # and by :func:`slim_chunk_options` to project caller-supplied dicts
 # down to the selected strategy.
 _CHUNK_STRATEGY_KEYS: dict[str, str] = {
+    PROCESS_OPTION_CHUNK_PARENT_CHILD: "parent_child",
     PROCESS_OPTION_CHUNK_FIXED: "fixed_token",
     PROCESS_OPTION_CHUNK_RECURSIVE: "recursive_character",
     PROCESS_OPTION_CHUNK_VECTOR: "semantic_vector",
@@ -321,6 +330,9 @@ def slim_chunk_options(
     if "chunk_token_size" in src:
         result["chunk_token_size"] = deepcopy(src["chunk_token_size"])
     result[key] = deepcopy(dict(src.get(key) or {}))
+    if key == "parent_child":
+        result[key].setdefault("chunk_token_size", 500)
+        result[key].setdefault("chunk_overlap_token_size", 60)
     if key == "paragraph_semantic":
         if "chunk_token_size" not in result[key]:
             result[key]["chunk_token_size"] = _chunk_env_int(
@@ -575,6 +587,7 @@ def default_chunker_config() -> dict[str, Any]:
             ),
         },
         "paragraph_semantic": {},
+        "parent_child": {"chunk_token_size": 500, "chunk_overlap_token_size": 60},
     }
 
     # Strategy-specific overlap envs only — leave the slot absent when

@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from lightrag.extraction import printer
+from lightrag.extraction.printer_examples import worked_examples
 from lightrag.prompt import (
     PROMPTS,
     load_entity_extraction_prompt_profile,
@@ -292,7 +293,7 @@ def test_committed_native_profile_loads_and_formats_in_both_modes(
     monkeypatch, tmp_path
 ):
     repo = Path(__file__).resolve().parents[2]
-    path = repo / "prompts/samples/printer_diagnosis.v1.yml"
+    path = repo / "prompts/samples/printer_diagnosis.v2.yml"
     assert yaml.safe_load(path.read_text(encoding="utf-8")) == printer.native_profile()
     target = tmp_path / "entity_type"
     target.mkdir()
@@ -331,3 +332,60 @@ def test_profile_export_refuses_to_overwrite_operator_customizations(tmp_path):
     assert printer.main(["--export-profile", str(path)]) == 0
     with pytest.raises(FileExistsError):
         printer.main(["--export-profile", str(path)])
+
+
+@pytest.mark.parametrize(
+    "example", worked_examples(), ids=["network", "display", "adf"]
+)
+def test_complete_teaching_examples_obey_output_contract_and_contiguous_quotes(example):
+    result = printer.review_response(
+        response(example["output"]), {"input_text": example["source_text"]}
+    )
+    assert result["sample_error"] is None
+    assert result["rejected"] == []
+    assert result["accepted"] == example["output"]
+    assert result["semantic_review_required"] is True
+
+
+@pytest.mark.parametrize(
+    "damage", ["fault_requires", "feature_spec", "feature_indicates"]
+)
+def test_prompt_revision_does_not_relax_rejected_endpoint_types(damage):
+    examples = worked_examples()
+    example = deepcopy(examples[0] if damage == "fault_requires" else examples[2])
+    relations = example["output"]["relationships"]
+    if damage == "fault_requires":
+        relations[2]["source"] = "E-12"
+    elif damage == "feature_spec":
+        relations[1]["target"] = "ADF"
+    else:
+        relations[2]["source"], relations[2]["target"] = (
+            relations[2]["target"],
+            relations[2]["source"],
+        )
+        relations[2]["relation"] = "INDICATES"
+    result = printer.review_response(
+        response(example["output"]), {"input_text": example["source_text"]}
+    )
+    assert len(result["rejected"]) == 1
+    assert "endpoint types" in result["rejected"][0]["reason"]
+
+
+def test_prompt_text_export_and_committed_full_text_match_runtime(tmp_path):
+    path = tmp_path / "prompt.md"
+    assert printer.main(["--export-system-prompt", str(path)]) == 0
+    assert path.read_text(encoding="utf-8") == printer.system_prompt()
+    repo = Path(__file__).resolve().parents[2]
+    committed = repo / "prompts/samples/printer_business_extraction.v2.md"
+    assert committed.read_text(encoding="utf-8") == printer.system_prompt()
+    with pytest.raises(FileExistsError):
+        printer.main(["--export-system-prompt", str(path)])
+
+
+def test_v1_native_profile_is_still_readable_as_an_archived_profile():
+    repo = Path(__file__).resolve().parents[2]
+    profile = load_entity_extraction_prompt_profile(
+        repo / "prompts/samples/printer_diagnosis.v1.yml"
+    )
+    assert profile["entity_extraction_examples"]
+    assert profile["entity_extraction_json_examples"]

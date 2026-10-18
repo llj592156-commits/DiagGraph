@@ -5052,6 +5052,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 hashing_kv=self.llm_response_cache,
                 system_prompt=None,
                 chunks_vdb=self.chunks_vdb,
+                full_docs_db=self.full_docs,
             )
         elif data_param.mode == "naive":
             logger.debug(f"[aquery_data] Using naive_query for mode: {data_param.mode}")
@@ -5063,6 +5064,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 hashing_kv=self.llm_response_cache,
                 system_prompt=None,
                 text_chunks_db=self.text_chunks,
+                full_docs_db=self.full_docs,
             )
         elif data_param.mode == "bypass":
             logger.debug("[aquery_data] Using bypass mode")
@@ -5158,6 +5160,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     system_prompt=system_prompt,
                     chunks_vdb=self.chunks_vdb,
                     progress_callback=progress_callback,
+                    full_docs_db=self.full_docs,
                 )
             elif param.mode == "naive":
                 query_result = await naive_query(
@@ -5169,6 +5172,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                     system_prompt=system_prompt,
                     text_chunks_db=self.text_chunks,
                     progress_callback=progress_callback,
+                    full_docs_db=self.full_docs,
                 )
             elif param.mode == "bypass":
                 # Bypass mode: directly use LLM without knowledge retrieval
