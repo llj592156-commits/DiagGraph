@@ -1,0 +1,213 @@
+{
+  "schema_version": "printer-experiment-inventory-v1",
+  "date": "2026-10-19",
+  "starting_code_commit": "3fb6f548f",
+  "scope": "Development-set observations and offline structural integrity; not held-out answer accuracy.",
+  "source_hashes": {
+    "outputs/printer_retrieval_comparison/manual_run_v2/results.jsonl": "sha256:af079e3aedc5b93074db5a748c294b46342a3dad6a242cf1df1e09e623298f4a",
+    "outputs/printer_retrieval_comparison/manual_run_v2/experiment.json": "sha256:41ae22fb01fb52d3e2857ad1971b424fc3a120b068e5f3a6fb886bbc8280f38f",
+    "outputs/printer_retrieval_comparison/manual_run_v2/summary.json": "sha256:7dda1838d6d7e697299cee30b4ae79e7d86dadd063240ddc7f70d1b9eff46cc7",
+    "outputs/printer_system_retrieval/glm_rerank_v1/results.jsonl": "sha256:b3b74b52362ddced695b641c544d0d5f94b000e50c2a5e7fa0899331aa26a866",
+    "outputs/printer_system_retrieval/full_ingestion_v1/results.jsonl": "sha256:429cd0a89ab9c42b3336eba20c71f6d483bc0a1e5044166848ad37eb963cfd5d",
+    "outputs/printer_system_retrieval/glm_rerank_v1/evidence_review.json": "sha256:39b7269cab47c156156a521716cf0d1d75f67c8903bfd2dd5a83914f20cc9159",
+    "examples/parent_blocks/printer_retrieval_cases.jsonl": "sha256:9d1eef0fbd15bc8b8a23c88f00efb3801070e1816b21f35c82926e55f174bc8b",
+    "outputs/parent_child_integrity/20261019_v3/report.json": "sha256:1c889662dda419ebdee2780bf625341adeb221907f9094f1cf2ccad7f917fb05",
+    "lightrag/evaluation/audit_parent_child_integrity.py": "sha256:17a7e86911ed1466ce8eab2dc51fa55638b8d63081af24caa159a4d7ca02350e",
+    "tests/evaluation/test_audit_parent_child_integrity.py": "sha256:fcf14026f8cf55c5574ccb7f7d748bf10350c64b7a96fdae27762ac89d165c32"
+  },
+  "dense_comparison": {
+    "records": 144,
+    "dataset_questions": 36,
+    "embedding_model": "GLM-Embedding-3",
+    "top_k": 5,
+    "context_tokens": 8000,
+    "metrics": {
+      "child_model_filter": {
+        "questions": 30,
+        "mean_quote_coverage": 0.9222222222222223,
+        "all_quotes_covered": 26,
+        "zero_quotes_covered": 1
+      },
+      "child_raw": {
+        "questions": 30,
+        "mean_quote_coverage": 0.8633333333333333,
+        "all_quotes_covered": 24,
+        "zero_quotes_covered": 2
+      },
+      "legacy_model_filter": {
+        "questions": 30,
+        "mean_quote_coverage": 0.8277777777777777,
+        "all_quotes_covered": 22,
+        "zero_quotes_covered": 2
+      },
+      "legacy_raw": {
+        "questions": 30,
+        "mean_quote_coverage": 0.5966666666666666,
+        "all_quotes_covered": 15,
+        "zero_quotes_covered": 8
+      }
+    },
+    "caveats": [
+      "Parsing, chunking, metadata and parent expansion changed together.",
+      "Filtered arms include experimental model/capability constraints; not enabled as production hard filters."
+    ]
+  },
+  "system_retrieval": {
+    "records": 90,
+    "metrics": {
+      "hybrid": {
+        "questions": 30,
+        "mean_quote_coverage": 0.7633333333333333,
+        "all_quotes_covered": 20,
+        "zero_quotes_covered": 5,
+        "rerank_applied": 30
+      },
+      "mix": {
+        "questions": 30,
+        "mean_quote_coverage": 0.8966666666666666,
+        "all_quotes_covered": 25,
+        "zero_quotes_covered": 1,
+        "rerank_applied": 30
+      },
+      "naive": {
+        "questions": 30,
+        "mean_quote_coverage": 0.8522222222222222,
+        "all_quotes_covered": 23,
+        "zero_quotes_covered": 2,
+        "rerank_applied": 30
+      }
+    },
+    "caveats": [
+      "Previous run differs in corpus cleanup, candidates and budget handling.",
+      "No isolated same-index rerank-off control; no latency improvement claim."
+    ]
+  },
+  "integrity_audit": {
+    "passed": true,
+    "corpus": {
+      "documents": 3,
+      "parents": 710,
+      "body_parents": 649,
+      "children": 1981,
+      "transformed_table_children": 11,
+      "required_note_occurrences": 6,
+      "table_note_occurrences": 3,
+      "parent_review_flags": {
+        "inline_condition_requires_review": 24
+      },
+      "saved_responses": 90
+    },
+    "counts": {
+      "bundle_artifacts_and_ancestry": {
+        "checks": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      "child_pages": {
+        "checks": 1981,
+        "passed": 1981,
+        "failed": 0
+      },
+      "child_structure": {
+        "checks": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      "input_unchanged": {
+        "checks": 28,
+        "passed": 28,
+        "failed": 0
+      },
+      "parent_pages": {
+        "checks": 710,
+        "passed": 710,
+        "failed": 0
+      },
+      "parent_source_positions": {
+        "checks": 710,
+        "passed": 710,
+        "failed": 0
+      },
+      "retrieved_evidence": {
+        "checks": 398,
+        "passed": 398,
+        "failed": 0
+      },
+      "saved_retrieval_inventory": {
+        "checks": 1,
+        "passed": 1,
+        "failed": 0
+      },
+      "saved_retrieval_response": {
+        "checks": 90,
+        "passed": 90,
+        "failed": 0
+      },
+      "source_content_coverage": {
+        "checks": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      "source_position_coverage": {
+        "checks": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      "stored_child": {
+        "checks": 1981,
+        "passed": 1981,
+        "failed": 0
+      },
+      "stored_child_inventory": {
+        "checks": 1,
+        "passed": 1,
+        "failed": 0
+      },
+      "stored_parent": {
+        "checks": 710,
+        "passed": 710,
+        "failed": 0
+      },
+      "stored_parent_inventory": {
+        "checks": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    },
+    "input_hashes": {
+      "tmp/parent_blocks_tools/cl100k_base.tiktoken": "sha256:223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7",
+      "outputs/printer_parent_child/20261017_v3/A/summary.json": "sha256:4c35e007261e078bbe2e313e0324062408e7e297cf3aabffe95f1964d372997b",
+      "outputs/printer_parent_child/20261017_v3/A/parents.jsonl": "sha256:72384b26d48d05d16573b90f0185b5117feb2da5ff9bdbb1b622b4f4800fa6d5",
+      "outputs/printer_parent_child/20261017_v3/A/children.jsonl": "sha256:d902358ea11ee0501a2aa81f91828aa5e3e17ffdff38d093e42fa306b63fcef3",
+      "outputs/printer_parent_blocks/20261017_v6/A/parents.jsonl": "sha256:ce325f6526028fdcd30a4b4a7b0706d74144eead378612f424a1b9e030a0706d",
+      "outputs/printer_parent_blocks/20261017_v6/A/summary.json": "sha256:3cd8297aea9e436d685d9cc6cde486449ee5909a0c7cbe41c2dcb38c0b5aaa38",
+      "external-pdf/L3251_L3253_L3255_L3256_L3258_UG.pdf": "sha256:64c18a5b79fbd6cf13a207dd411e0fd24580c9b2cfa5605b858ea0aa8b6aed1e",
+      "outputs/printer_docling_validation/A_no_ocr/L3251_L3253_L3255_L3256_L3258_UG.pdf.parsed/L3251_L3253_L3255_L3256_L3258_UG.blocks.jsonl": "sha256:eecad3e649c91cba02bc618755847e695c0dc6bb19ed734e0207fcae40dded72",
+      "outputs/printer_docling_validation/A_no_ocr/L3251_L3253_L3255_L3256_L3258_UG.pdf.parsed/L3251_L3253_L3255_L3256_L3258_UG.tables.json": "sha256:944cbe60b105dd17ff054d14496b4401b3a9435358831a4008cfe818db75a31e",
+      "outputs/printer_parent_child/20261017_v3/B/summary.json": "sha256:b8955140ad54c16cce9f4a644ba80bcbc3bead29e718166f5a33acde70c9d154",
+      "outputs/printer_parent_child/20261017_v3/B/parents.jsonl": "sha256:174f0d5986cb2c781ee4699d5f6ba3175fb9edf7e2e74d1e776a2cf5f80cc6a7",
+      "outputs/printer_parent_child/20261017_v3/B/children.jsonl": "sha256:ce4d9d3510197b4fc17858bb374ed609480df09976655bfb7cc46a6a9d948b67",
+      "outputs/printer_parent_blocks/20261017_v6/B/parents.jsonl": "sha256:2480df873fb9c70f75073faa2eb10f2133b020826f17a4b04dbc1ca0f361c454",
+      "outputs/printer_parent_blocks/20261017_v6/B/summary.json": "sha256:3d50b4d2de4a6247239436dee881c6efb416eadfcf207743b4ca3a2f719805e3",
+      "external-pdf/L3266_L3267_L3268_L3269_L5298_UG.pdf": "sha256:d7104fde7d430b3e408211980e6be14bdd0ed6e527aeab9e6564171b3615fefb",
+      "outputs/printer_docling_validation/B_no_ocr/L3266_L3267_L3268_L3269_L5298_UG.pdf.parsed/L3266_L3267_L3268_L3269_L5298_UG.blocks.jsonl": "sha256:6ebffcc40ceb699ca9484d3d2b4b56a32a55bc7f5faca7ebbebee875e633f0f7",
+      "outputs/printer_docling_validation/B_no_ocr/L3266_L3267_L3268_L3269_L5298_UG.pdf.parsed/L3266_L3267_L3268_L3269_L5298_UG.tables.json": "sha256:98cccce8f605ba3182d941b4ae17bfb1ce68afc2bd209b4f9bb67ba10f0f3b21",
+      "outputs/printer_parent_child/20261017_v3/C/summary.json": "sha256:0db5711c076a551e73f027f3553558860891f2b221f5a3a839801e013454674a",
+      "outputs/printer_parent_child/20261017_v3/C/parents.jsonl": "sha256:47887771ae865fa20387d4e1d202e0b309f9246e8a09e84d45e45dbec82927c6",
+      "outputs/printer_parent_child/20261017_v3/C/children.jsonl": "sha256:4dbb9b3ac6cd5b3ae4df970f8f6f62229cadedd64ec95718007b1be9dd5c6a72",
+      "outputs/printer_parent_blocks/20261017_v6/C/parents.jsonl": "sha256:ec764f76d90ff1c0a8f68518444b25224e7152bb5b5b1b92cace9faf6bf9fe10",
+      "outputs/printer_parent_blocks/20261017_v6/C/summary.json": "sha256:05d1d2767d71f23a0ccbf2a92941c1fd62817e7c12723ab9ffa10d217a2629d5",
+      "external-pdf/L4263-L4266-L4267-L4268-L4269-UG.pdf": "sha256:fbcc5a2ad89a7ddee8c1101d409b3d80ba8f4df9e802da5f52a2e9d347c24e39",
+      "outputs/printer_docling_validation/C_no_ocr/L4263-L4266-L4267-L4268-L4269-UG.pdf.parsed/L4263-L4266-L4267-L4268-L4269-UG.blocks.jsonl": "sha256:37dc479ac34e090e7db135f001678dae36ac1440a4d91fc17b9925287bdc25c1",
+      "outputs/printer_docling_validation/C_no_ocr/L4263-L4266-L4267-L4268-L4269-UG.pdf.parsed/L4263-L4266-L4267-L4268-L4269-UG.tables.json": "sha256:c7097c1ef61494833083df63356bd37cae073bfe72b2560902cac325c58f9dbc",
+      "rag_storage/learning_paratera/kv_store_full_docs.json": "sha256:cce91ea205a287b5fd94b0ee93c6797ce5d5757543a681bd4a1fd170322fd5a7",
+      "rag_storage/learning_paratera/kv_store_text_chunks.json": "sha256:e00af57bef14821b5f3a2c9658a9cbe85756e4692736aa041b03b15347632d80",
+      "outputs/printer_system_retrieval/glm_rerank_v1/results.jsonl": "sha256:b3b74b52362ddced695b641c544d0d5f94b000e50c2a5e7fa0899331aa26a866"
+    },
+    "limitations": [
+      "Pages are checked against parsed source positions, not PDF visual truth.",
+      "Structural coverage does not establish retrieval relevance or answer accuracy.",
+      "Saved retrievals are replayed offline; no model or service is called."
+    ]
+  }
+}
