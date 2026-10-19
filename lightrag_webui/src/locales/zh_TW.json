@@ -1,4 +1,27 @@
 {
+  "assistant": {
+    "placeholder": "請輸入問題或補充資訊…",
+    "workflow": "對話方式",
+    "workflows": { "assistant": "助理對話", "retrieval": "檢索問答" },
+    "description": "直接提問或繼續對話，助理會在需要時向你確認資訊。",
+    "waiting": "正在分析問題並核對資料，請稍候…",
+    "failed": "本次未能完成，請稍後重試。",
+    "queryTooLong": "問題長度請控制在 8192 個字元以內。",
+    "historyTruncated": "對話已達到長度上限，本次僅使用最近的完整對話。",
+    "sources": "參考來源",
+    "sourceUnavailable": "暫時無法顯示來源原文。",
+    "sourcePages": "來源頁碼：第 {{pages}} 頁",
+    "sourceLocationUnavailable": "未提供章節和頁碼資訊。",
+    "relatedSections": "相關章節",
+    "errorDetails": "錯誤詳情",
+    "status": {
+      "answered": "已回答",
+      "needs_clarification": "需要補充資訊",
+      "escalated": "建議聯絡專業售後，尚未實際轉接或建立工單",
+      "insufficient_evidence": "現有資料不足以可靠回答",
+      "failed": "本次請求失敗"
+    }
+  },
   "settings": {
     "language": "語言",
     "theme": "主題",

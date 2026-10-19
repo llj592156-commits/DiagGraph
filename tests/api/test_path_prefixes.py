@@ -110,6 +110,19 @@ class TestRootPathConfiguration:
 class TestRoutesAtNaturalPaths:
     """Test that routes stay at their natural paths regardless of root_path."""
 
+    def test_assistant_is_registered_alongside_original_queries(self, mock_args_api_prefix):
+        """The actual server factory exposes the new API under the same proxy root."""
+        with patch("lightrag.api.lightrag_server.LightRAG") as mock_rag:
+            mock_rag.return_value = MagicMock()
+            from lightrag.api.lightrag_server import create_app
+
+            app = create_app(mock_args_api_prefix)
+            paths = app.openapi()["paths"]
+            assert "/assistant/query" in paths
+            assert "/query" in paths and "/query/data" in paths
+            assert "post" in paths["/assistant/query"]
+            assert app.root_path == "/test-api"
+
     def test_routes_accessible_at_both_paths_with_prefix(self, mock_args_api_prefix):
         """With root_path, routes work at both prefixed and natural paths.
 

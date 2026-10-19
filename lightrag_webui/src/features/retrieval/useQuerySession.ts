@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { queryText, queryTextStream } from '@/api/lightrag'
+import { queryAssistant, queryText, queryTextStream } from '@/api/lightrag'
 import type { QueryMode } from '@/api/lightrag'
 import { isAuthenticationRequiredError } from '@/api/errors'
 import { errorMessage } from '@/lib/utils'
@@ -14,11 +14,16 @@ import {
 import type { RetrievalHistoryStore } from '@/stores/retrievalHistory'
 import { serializeQueryRequest } from './serializeQueryRequest'
 import { streamErrorChunk } from './streamErrorChunk'
+import { serializeAssistantRequest } from './serializeAssistantRequest'
+import { buildAssistantCitations } from './assistantCitations'
+import type { QueryWorkflow } from '@/types/assistant'
 
 /**
  * Shared query-session controller used by BOTH query pages (`RetrievalView`
  * and `WorkspaceQueryView`): message state, streaming increments, COT/LaTeX
- * completeness tracking, progress, timing, stop and cleanup.
+ * completeness tracking, progress, timing, stop and cleanup. The assistant
+ * flow uses bounded conversation history and a single nonstreaming request;
+ * the retrieval flow retains the legacy settings and streaming contract.
  *
  * Boundary rules (workspace-entry PRD §7.2):
  * - The history storage is INJECTED — this layer never decides which
@@ -118,6 +123,7 @@ const parseCOTContent = (content: string) => {
 }
 
 export interface QuerySessionOptions {
+  workflow?: QueryWorkflow
   /** This page's own history storage — injected, never chosen here. */
   historyStore: RetrievalHistoryStore
   /**
@@ -149,6 +155,7 @@ export interface SubmitOptions {
 }
 
 export function useQuerySession({
+  workflow = 'retrieval',
   historyStore,
   getQuerySettingsSnapshot,
   onUserPromptUsed,
@@ -246,7 +253,7 @@ export function useQuerySession({
 
   const submitQuery = useCallback(
     async (query: string, options: SubmitOptions = {}) => {
-      if (!query.trim() || isLoading) return
+      if (!query.trim() || isLoading || abortControllerRef.current) return
 
       // Reset thinking timer state for new query to prevent confusion
       thinkingStartTime.current = null
@@ -255,13 +262,15 @@ export function useQuerySession({
       const userMessage: MessageWithError = {
         id: generateUniqueId(),
         content: options.displayedInput ?? query,
-        role: 'user'
+        role: 'user',
+        workflow
       }
 
       const assistantMessage: MessageWithError = {
         id: generateUniqueId(),
         content: '',
         role: 'assistant',
+        workflow,
         mermaidRendered: false,
         latexRendered: false,
         thinkingTime: null,
@@ -305,13 +314,13 @@ export function useQuerySession({
       // LLM) and then corrected by the server, which is the only side that
       // knows a query found no context and got the canned reply instead of an
       // LLM call. Older servers report nothing and the prediction stands.
-      let llmGenerated = producesAiGeneratedOutput(snapshot)
+      let llmGenerated = workflow === 'assistant' || producesAiGeneratedOutput(snapshot)
 
       // Start the live response timer.
       responseStartRef.current = Date.now()
       serverResponseTimeRef.current = null
       firstTokenRecordedRef.current = false
-      isStreamingRef.current = snapshot.stream ?? false
+      isStreamingRef.current = workflow === 'retrieval' && (snapshot.stream ?? false)
       assistantMessage.responseTime = 0
       assistantMessage.firstTokenTime = null
       if (responseTimerRef.current) clearInterval(responseTimerRef.current)
@@ -415,7 +424,8 @@ export function useQuerySession({
               latexRendered: assistantMessage.latexRendered,
               thinkingTime: assistantMessage.thinkingTime,
               responseTime: assistantMessage.responseTime,
-              firstTokenTime: assistantMessage.firstTokenTime
+              firstTokenTime: assistantMessage.firstTokenTime,
+              assistantOutcome: assistantMessage.assistantOutcome
             })
           }
           return newMessages
@@ -423,7 +433,7 @@ export function useQuerySession({
       }
 
       // Record a non-empty user prompt (page-injected behavior).
-      if (snapshot.user_prompt && snapshot.user_prompt.trim()) {
+      if (workflow === 'retrieval' && snapshot.user_prompt && snapshot.user_prompt.trim()) {
         onUserPromptUsed?.(snapshot.user_prompt.trim())
       }
 
@@ -438,7 +448,28 @@ export function useQuerySession({
 
       try {
         // Run query
-        if (snapshot.stream) {
+        if (workflow === 'assistant') {
+          const { request, historyTruncated } = serializeAssistantRequest(query, prevMessages)
+          const response = await queryAssistant(request, controller.signal)
+          // Stop, Clear, unmount or a newer submit relinquishes this request.
+          if (controller.signal.aborted || abortControllerRef.current !== controller) return
+          const elapsed = response.metadata?.elapsed_ms
+          if (typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed >= 0) {
+            serverResponseTimeRef.current = elapsed / 1000
+          }
+          assistantMessage.assistantOutcome = {
+            status: response.status,
+            strategy: response.route?.strategy ?? null,
+            citations: response.status === 'answered' ? buildAssistantCitations(response) : [],
+            error: response.error,
+            historyTruncated
+          }
+          llmGenerated = response.status === 'answered' || response.status === 'needs_clarification'
+          updateAssistantMessage(
+            response.status === 'failed' ? t('assistant.failed') : response.answer,
+            response.status === 'failed'
+          )
+        } else if (snapshot.stream) {
           let streamError = ''
           await queryTextStream(
             queryParams,
@@ -584,6 +615,7 @@ export function useQuerySession({
     },
     [
       isLoading,
+      workflow,
       messages,
       historyStore,
       getQuerySettingsSnapshot,
@@ -594,6 +626,13 @@ export function useQuerySession({
   )
 
   const clearMessages = useCallback(() => {
+    const controller = abortControllerRef.current
+    abortControllerRef.current = null
+    controller?.abort()
+    activeAssistantIdRef.current = null
+    setIsLoading(false)
+    if (stopCooldownTimerRef.current) clearTimeout(stopCooldownTimerRef.current)
+    setStopDisabled(false)
     // Stop any running response timer so it doesn't keep ticking after clear.
     if (responseTimerRef.current) {
       clearInterval(responseTimerRef.current)

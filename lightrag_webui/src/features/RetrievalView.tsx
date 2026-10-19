@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useSettingsStore } from '@/stores/settings'
 import { useQuerySettingsStore } from '@/stores/querySettings'
 import { useWebuiRetrievalHistoryStore } from '@/stores/webuiRetrievalHistory'
@@ -8,16 +8,20 @@ import QueryComposer from '@/features/retrieval/QueryComposer'
 import { useQuerySession } from '@/features/retrieval/useQuerySession'
 import { useTranslation } from 'react-i18next'
 import { prepareQueryInput, SUPPORTED_QUERY_MODES } from '@/features/retrieval/queryInput'
+import QueryWorkflowPicker from '@/features/retrieval/QueryWorkflowPicker'
+import type { QueryWorkflow } from '@/types/assistant'
 
 /**
  * The ADMIN query page: composes the shared query session, message list and
- * composer with the QuerySettings sidebar and the `/mode` prefix override.
- * Its history storage is the admin entry's own store; the settings snapshot
+ * composer. Assistant is the default; the QuerySettings sidebar and `/mode`
+ * override belong only to retrieval Q&A. History is the admin entry's own store;
+ * the legacy settings snapshot
  * is passed through unmodified (including the `only_need_*` debug switches —
  * those are clamped only on the workspace page).
  */
 export default function RetrievalView() {
   const { t } = useTranslation()
+  const [workflow, setWorkflow] = useState<QueryWorkflow>('assistant')
   // Get current tab to determine if this tab is active (for performance optimization)
   const currentTab = useSettingsStore.use.currentTab()
   const isRetrievalTabActive = currentTab === 'retrieval'
@@ -32,6 +36,7 @@ export default function RetrievalView() {
   }, [])
 
   const session = useQuerySession({
+    workflow,
     historyStore: useWebuiRetrievalHistoryStore,
     getQuerySettingsSnapshot,
     onUserPromptUsed
@@ -41,6 +46,11 @@ export default function RetrievalView() {
   // The workspace entry uses the same shared preparation contract.
   const handleSend = useCallback(
     (input: string): string | null => {
+      if (workflow === 'assistant') {
+        if (Array.from(input.trim()).length > 8192) return t('assistant.queryTooLong')
+        void session.submitQuery(input.trim())
+        return null
+      }
       const prepared = prepareQueryInput(input, getQuerySettingsSnapshot().mode)
       if (!prepared.ok) {
         return t(`retrievePanel.retrieval.${prepared.error}`, {
@@ -56,14 +66,15 @@ export default function RetrievalView() {
       })
       return null
     },
-    [getQuerySettingsSnapshot, session, t]
+    [getQuerySettingsSnapshot, session, t, workflow]
   )
 
   // Match DocumentManager's 24px content padding plus its 8px inner-card
   // margin. The resulting 32px clearance also stays above StatusIndicator.
   return (
     <div className="flex size-full gap-2 overflow-hidden px-2 pb-8">
-      <div className="flex grow flex-col gap-4">
+      <div className="flex min-w-0 grow flex-col gap-4">
+        <QueryWorkflowPicker value={workflow} onChange={setWorkflow} disabled={session.isLoading} />
         <MessageList
           messages={session.messages}
           isLoading={session.isLoading}
@@ -76,6 +87,7 @@ export default function RetrievalView() {
           }
         />
         <QueryComposer
+          placeholder={workflow === 'assistant' ? t('assistant.placeholder') : undefined}
           isLoading={session.isLoading}
           stopDisabled={session.stopDisabled}
           onSend={handleSend}
@@ -83,7 +95,7 @@ export default function RetrievalView() {
           onClear={session.clearMessages}
         />
       </div>
-      <QuerySettings />
+      {workflow === 'retrieval' && <QuerySettings />}
     </div>
   )
 }

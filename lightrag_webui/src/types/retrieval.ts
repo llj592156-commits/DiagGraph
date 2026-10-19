@@ -8,10 +8,13 @@
  */
 
 import type { Message } from '@/api/lightrag'
+import type { AssistantOutcome, QueryWorkflow } from './assistant'
 
 export type MessageWithError = Message & {
   id: string // Unique identifier for stable React keys
   isError?: boolean
+  workflow?: QueryWorkflow
+  assistantOutcome?: AssistantOutcome
   isThinking?: boolean // Flag to indicate if the message is in a "thinking" state
   /**
    * Whether this message's text was written by the answering LLM. Decided by

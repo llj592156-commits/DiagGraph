@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/state'
 import { applyAiContentNoticeFlag } from '@/stores/aiContentNotice'
 import { navigationService } from '@/services/navigation'
 import { AuthenticationRequiredError, isAuthenticationRequiredError } from '@/api/errors'
+import type { AssistantRequest, AssistantResponse } from '@/types/assistant'
 
 // Types
 export type LightragNodeType = {
@@ -674,6 +675,24 @@ export const queryText = async (
 ): Promise<QueryResponse> => {
   const response = await axiosInstance.post('/query', request, { signal })
   return response.data
+}
+
+/** Shares the existing credentials, token renewal and API-prefix handling. */
+export const queryAssistant = async (
+  request: AssistantRequest,
+  signal?: AbortSignal
+): Promise<AssistantResponse> => {
+  const response = await axiosInstance.post('/assistant/query', request, { signal })
+  const data = response.data as AssistantResponse
+  if (
+    !data ||
+    !['answered', 'needs_clarification', 'escalated', 'insufficient_evidence', 'failed'].includes(data.status) ||
+    typeof data.answer !== 'string' ||
+    !Array.isArray(data.citations) || !Array.isArray(data.evidence)
+  ) {
+    throw new Error('Invalid assistant response')
+  }
+  return data
 }
 
 /**

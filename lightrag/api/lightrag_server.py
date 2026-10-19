@@ -71,6 +71,7 @@ from lightrag.parser.routing import (
 )
 from lightrag.parser.external.mineru.cache import MinerUParserOptions
 from lightrag.api.routers.query_routes import create_query_routes
+from lightrag.api.routers.assistant_routes import create_assistant_routes
 from lightrag.api.routers.graph_routes import create_graph_routes
 from lightrag.api.routers.ollama_api import OllamaAPI
 from lightrag.api.routers.ui_customization_routes import create_ui_customization_routes
@@ -2594,6 +2595,7 @@ def create_app(args):
     # routes stay at their natural paths and are prefixed by the proxy or uvicorn --root-path
     app.include_router(create_document_routes(rag, doc_manager, api_key))
     app.include_router(create_query_routes(rag, api_key, args.top_k))
+    app.include_router(create_assistant_routes(rag, api_key))
     app.include_router(create_graph_routes(rag, api_key))
     # Public read-only customization surface — registered unconditionally:
     # without a bundle it answers 200 {"customized": false, ...}.

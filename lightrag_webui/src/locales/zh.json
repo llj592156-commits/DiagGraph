@@ -1,4 +1,27 @@
 {
+  "assistant": {
+    "placeholder": "请输入问题或补充信息…",
+    "workflow": "对话方式",
+    "workflows": { "assistant": "助手对话", "retrieval": "检索问答" },
+    "description": "直接提问或继续对话，助手会在需要时向你确认信息。",
+    "waiting": "正在分析问题并核对资料，请稍候…",
+    "failed": "本次未能完成，请稍后重试。",
+    "queryTooLong": "问题长度请控制在 8192 个字符以内。",
+    "historyTruncated": "对话已达到长度上限，本次仅使用最近的完整对话。",
+    "sources": "参考来源",
+    "sourceUnavailable": "暂时无法显示来源原文。",
+    "sourcePages": "来源页码：第 {{pages}} 页",
+    "sourceLocationUnavailable": "未提供章节和页码信息。",
+    "relatedSections": "相关章节",
+    "errorDetails": "错误详情",
+    "status": {
+      "answered": "已回答",
+      "needs_clarification": "需要补充信息",
+      "escalated": "建议联系专业售后，尚未实际转接或创建工单",
+      "insufficient_evidence": "现有资料不足以可靠回答",
+      "failed": "本次请求失败"
+    }
+  },
   "settings": {
     "language": "语言",
     "theme": "主题",

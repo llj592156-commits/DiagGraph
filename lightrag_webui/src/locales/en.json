@@ -1,4 +1,27 @@
 {
+  "assistant": {
+    "placeholder": "Ask a question or add details…",
+    "workflow": "Conversation workflow",
+    "workflows": { "assistant": "Assistant", "retrieval": "Retrieval Q&A" },
+    "description": "Ask a question or continue the conversation. The assistant will ask for details when needed.",
+    "waiting": "Analysing your question and checking the available information…",
+    "failed": "The assistant could not complete this request. Please try again.",
+    "queryTooLong": "Please keep your question within 8,192 characters.",
+    "historyTruncated": "Only recent complete turns were used because the conversation reached its length limit.",
+    "sources": "Sources",
+    "sourceUnavailable": "The source text is unavailable.",
+    "sourcePages": "Source pages: {{pages}}",
+    "sourceLocationUnavailable": "Chapter and page information was not provided.",
+    "relatedSections": "Related sections",
+    "errorDetails": "Error details",
+    "status": {
+      "answered": "Answered",
+      "needs_clarification": "More information needed",
+      "escalated": "Professional support recommended — no transfer or ticket has been created",
+      "insufficient_evidence": "Insufficient supporting information",
+      "failed": "Request failed"
+    }
+  },
   "settings": {
     "language": "Language",
     "theme": "Theme",

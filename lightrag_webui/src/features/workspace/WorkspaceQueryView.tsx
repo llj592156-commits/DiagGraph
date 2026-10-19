@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useQuerySettingsStore } from '@/stores/querySettings'
 import { useWorkspaceRetrievalHistoryStore } from '@/stores/workspaceRetrievalHistory'
 import MessageList from '@/features/retrieval/MessageList'
@@ -10,16 +10,18 @@ import { isApiKeyFailure, runCredentialProbe } from './credentialProbe'
 import { useTranslation } from 'react-i18next'
 import { prepareQueryInput, SUPPORTED_QUERY_MODES } from '@/features/retrieval/queryInput'
 import { workspaceQuerySettingsSnapshot } from './querySettingsSnapshot'
+import QueryWorkflowPicker from '@/features/retrieval/QueryWorkflowPicker'
+import type { QueryWorkflow } from '@/types/assistant'
 
 /**
  * The workspace (query-user) page. Composes the SAME shared query session,
  * message list and composer as the admin `RetrievalView`, with these
  * page-level differences (and only these):
- * - no QuerySettings sidebar; `/mode` prefix parsing matches `/webui`;
+ * - no QuerySettings sidebar; in retrieval Q&A, `/mode` matches `/webui`;
  * - the settings snapshot inherits the browser-shared `querySettings` saved
  *   by /webui, read-only, except the keys clamped by
  *   `workspaceQuerySettingsSnapshot` (the shared serializer knows nothing
- *   about that clamping);
+ *   about that clamping); assistant requests ignore these legacy settings;
  * - its history is the workspace entry's own store;
  * - the message area is always active (no admin tab lifecycle);
  * - a query rejected on API-key grounds re-probes credentials, which reopens
@@ -28,6 +30,7 @@ import { workspaceQuerySettingsSnapshot } from './querySettingsSnapshot'
  */
 export default function WorkspaceQueryView() {
   const { t } = useTranslation()
+  const [workflow, setWorkflow] = useState<QueryWorkflow>('assistant')
 
   const getQuerySettingsSnapshot = useCallback(
     (): QuerySettings =>
@@ -41,6 +44,7 @@ export default function WorkspaceQueryView() {
   }, [])
 
   const session = useQuerySession({
+    workflow,
     historyStore: useWorkspaceRetrievalHistoryStore,
     getQuerySettingsSnapshot,
     onQueryError: handleQueryError
@@ -50,6 +54,11 @@ export default function WorkspaceQueryView() {
 
   const handleSend = useCallback(
     (input: string): string | null => {
+      if (workflow === 'assistant') {
+        if (Array.from(input.trim()).length > 8192) return t('assistant.queryTooLong')
+        void session.submitQuery(input.trim())
+        return null
+      }
       const prepared = prepareQueryInput(input, getQuerySettingsSnapshot().mode)
       if (!prepared.ok) {
         return t(`retrievePanel.retrieval.${prepared.error}`, {
@@ -62,11 +71,12 @@ export default function WorkspaceQueryView() {
       })
       return null
     },
-    [getQuerySettingsSnapshot, session, t]
+    [getQuerySettingsSnapshot, session, t, workflow]
   )
 
   return (
     <div className="flex size-full flex-col gap-2 overflow-hidden px-2 pt-2 pb-2 md:gap-4 md:px-4 md:pb-4">
+      <QueryWorkflowPicker value={workflow} onChange={setWorkflow} disabled={session.isLoading} />
       <MessageList
         messages={session.messages}
         isLoading={session.isLoading}
@@ -75,6 +85,7 @@ export default function WorkspaceQueryView() {
         emptyState={<WorkspaceEmptyState />}
       />
       <QueryComposer
+        placeholder={workflow === 'assistant' ? t('assistant.placeholder') : undefined}
         isLoading={session.isLoading}
         stopDisabled={session.stopDisabled}
         onSend={handleSend}

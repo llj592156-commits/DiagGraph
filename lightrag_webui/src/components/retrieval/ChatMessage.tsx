@@ -40,6 +40,7 @@ export type { MessageWithError } from '@/types/retrieval'
 // Kept out of this file so tests can stub the load without mocking the
 // `mermaid` package process-wide; see `mermaidLoader.ts`.
 import { loadMermaid } from './mermaidLoader'
+import AssistantResult from '@/features/retrieval/AssistantResult'
 
 
 /**
@@ -246,6 +247,9 @@ export const ChatMessage = ({
           hint appears beneath it, so the time doesn't jump when "Thinking..."
           shows up. Once content arrives, the row moves below the answer. */}
       {!hasContent && timingRow}
+      {message.workflow === 'assistant' && isQuerying && !hasContent && (
+        <p role="status" className="text-muted-foreground my-2 text-sm">{t('assistant.waiting')}</p>
+      )}
       {/* Thinking process display - only for assistant messages */}
       {/* Always render to prevent layout shift when switching tabs */}
       {message.role === 'assistant' && (isThinking || thinkingTime !== null) && (
@@ -336,6 +340,7 @@ export const ChatMessage = ({
           role={message.role}
         />
       )}
+      {message.assistantOutcome && <AssistantResult result={message.assistantOutcome} />}
       {/* Once answer text has started, the timing row follows at the end of
           the answer (progress is already hidden by then). */}
       {hasContent && timingRow}

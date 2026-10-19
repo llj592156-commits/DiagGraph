@@ -149,6 +149,8 @@ const composerInput = (): HTMLElement =>
 const send = async (entry: EntryName, input: string): Promise<void> => {
   const user = userEvent.setup()
   await renderEntry(entry)
+  // The legacy settings/prefix contract belongs to the explicit retrieval flow.
+  await user.click(screen.getByRole('button', { name: 'Retrieval Q&A' }))
   await user.type(composerInput(), input)
   await user.keyboard('{Enter}')
   // A macrotask, not just the microtask queue: the entry starts the request

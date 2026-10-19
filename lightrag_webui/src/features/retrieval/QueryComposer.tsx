@@ -19,6 +19,7 @@ export interface QueryComposerProps {
   onSend: (input: string) => string | null
   onStop: () => void
   onClear: () => void
+  placeholder?: string
 }
 
 export default function QueryComposer({
@@ -26,7 +27,8 @@ export default function QueryComposer({
   stopDisabled,
   onSend,
   onStop,
-  onClear
+  onClear,
+  placeholder
 }: QueryComposerProps) {
   const { t } = useTranslation()
   const [inputValue, setInputValue] = useState('')
@@ -207,7 +209,7 @@ export default function QueryComposer({
       </Button>
       <div className="relative flex-1">
         <label htmlFor="query-input" className="sr-only">
-          {t('retrievePanel.retrieval.placeholder')}
+          {placeholder ?? t('retrievePanel.retrieval.placeholder')}
         </label>
         {hasMultipleLines ? (
           <Textarea
@@ -219,7 +221,7 @@ export default function QueryComposer({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={t('retrievePanel.retrieval.placeholder')}
+            placeholder={placeholder ?? t('retrievePanel.retrieval.placeholder')}
             disabled={isLoading}
             aria-invalid={inputError ? true : undefined}
             aria-describedby={inputError ? 'query-input-error' : undefined}
@@ -248,7 +250,7 @@ export default function QueryComposer({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={t('retrievePanel.retrieval.placeholder')}
+            placeholder={placeholder ?? t('retrievePanel.retrieval.placeholder')}
             disabled={isLoading}
             aria-invalid={inputError ? true : undefined}
             aria-describedby={inputError ? 'query-input-error' : undefined}
